@@ -47,6 +47,9 @@ public:
     void setLongDescr( const char * );
     void setLongDescr( const DLString& );
     inline const char * getLongDescr( ) const;
+    void fmtName( const char *, ... );
+    void fmtShortDescr( const char *, ... );
+    void fmtLongDescr( const char *, ... );
     
     inline const char * getRealShortDescr( ) const;
     inline const char * getRealLongDescr( ) const;
@@ -74,11 +77,11 @@ public:
     virtual bool is_mirror( ) const;
 
     // configuration
-    virtual PlayerConfig::Pointer getConfig( ) const;
+    virtual PlayerConfig getConfig( ) const;
 
 public:
     MOB_INDEX_DATA *        pIndexData;
-    AREA_DATA *                zone;
+    AreaIndexData *                zone;
     /** Room VNUM where this mob was reset. */
     int reset_room;
     

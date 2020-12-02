@@ -13,7 +13,6 @@
  *    и все остальные, кто советовал и играл в этот MUD                    *
  ***************************************************************************/
 #include <sstream>
-#include "skill.h"
 #include "skillcommandtemplate.h"
 #include "skillmanager.h"
 
@@ -30,16 +29,11 @@
 #include "magic.h"
 #include "occupations.h"
 #include "fight.h"
-#include "onehit.h"
 #include "onehit_weapon.h"
-#include "damage_impl.h"
 #include "chance.h"
-#include "clan.h"
-#include "vnum.h"
 #include "merc.h"
 #include "handler.h"
 #include "act.h"
-#include "interp.h"
 #include "def.h"
 #include "stats_apply.h"
 #include "debug_utils.h"
@@ -50,7 +44,7 @@
 
 SKILL_RUNP( vanish )
 {
-    Debug d(ch, "ninja", "vanish");
+    Debug d(ch, "debug_ninja", "vanish");
     Character *victim;
     float chance, kidnap_chance = 0, skill_mod, stat_mod, level_mod, quick_mod, size_mod, sleep_mod, vis_mod;
     bool FightingCheck;    
@@ -318,7 +312,7 @@ SKILL_RUNP( vanish )
                     transfer_char( victim, ch, pRoomIndex,
                         "%1$^C1 исчезает вместе с %2^C5!",
                         "Ты хватаешь и утаскиваешь с собой %1$^C4!",
-                        "%2$^C1 внезапно появляется, похищенн%2$Gое|ый|ая %1$^C5." );
+                        "%1$^C1 внезапно появляется, похищенн%1$Gое|ый|ая %2$^C5." );
                     
                     if (!FightingCheck) {
                         yell_panic( ch, victim,
@@ -349,7 +343,7 @@ SKILL_RUNP( vanish )
 
 SKILL_RUNP( nerve )
 {
-        Debug d(ch, "ninja", "nerve");
+        Debug d(ch, "debug_ninja", "nerve");
         Character *victim;
         float chance, skill_mod, stat_mod, level_mod, quick_mod, size_mod, sleep_mod, vis_mod;
         bool FightingCheck;
@@ -541,13 +535,11 @@ BOOL_SKILL(nerve)::run(Character *ch, Character *victim)
     mod = -1 * (level/20 + skill/20 + 1);
     
     Affect af;
-    af.where    = TO_AFFECTS;
     af.type     = gsn_nerve;
     af.level    = level;
     af.duration = level / 20;
     af.location = APPLY_STR;
     af.modifier = mod;
-    af.bitvector = 0;
 
     affect_to_char(victim,&af);
     return true;
@@ -606,13 +598,11 @@ BOOL_SKILL(endure)::run(Character *ch, int modifier)
 {      
     Affect af;
 
-    af.where         = TO_AFFECTS;
     af.type         = gsn_endure;
     af.level         = ch->getModifyLevel();
     af.duration   = ch->getModifyLevel() / 4;
     af.location = APPLY_SAVING_SPELL;
     af.modifier = modifier;    
-    af.bitvector = 0;
 
     affect_to_char(ch,&af);
 
@@ -640,7 +630,7 @@ AssassinateOneHit::AssassinateOneHit( Character *ch, Character *victim )
 
 void AssassinateOneHit::calcDamage( )
 {
-    Debug d(ch, "ninja", "assa");
+    Debug d(ch, "debug_ninja", "assa");
     float chance, skill_mod, stat_mod, level_mod, size_mod, vis_mod, sleep_mod, quick_mod, time_mod;
 
     //////////////// BASE MODIFIERS //////////////// TODO: add this to XML
@@ -869,7 +859,7 @@ SKILL_RUNP( assassinate )
 
 SKILL_RUNP( caltraps )
 {
-  Debug d(ch, "ninja", "caltraps");
+  Debug d(ch, "debug_ninja", "caltraps");
   Character *victim;
   float chance, skill_mod, stat_mod, quick_mod, size_mod, sleep_mod, vis_mod;
   bool FightingCheck;
@@ -1056,22 +1046,18 @@ BOOL_SKILL(caltraps)::run(Character *ch, Character *victim)
         if (!victim->isAffected(gsn_caltraps)) {
             Affect tohit,todam,todex;
 
-            tohit.where     = TO_AFFECTS;
             tohit.type      = gsn_caltraps;
             tohit.level     = level;
             tohit.duration  = -1;
-            tohit.location  = APPLY_HITROLL;
+            tohit.location = APPLY_HITROLL;
             tohit.modifier  = mod;
-            tohit.bitvector = 0;
             affect_to_char( victim, &tohit );
 
-            todam.where = TO_AFFECTS;
             todam.type = gsn_caltraps;
             todam.level = level;
             todam.duration = -1;
             todam.location = APPLY_DAMROLL;
             todam.modifier = mod;
-            todam.bitvector = 0;
             affect_to_char( victim, &todam);
 
             todex.type = gsn_caltraps;
@@ -1079,7 +1065,6 @@ BOOL_SKILL(caltraps)::run(Character *ch, Character *victim)
             todex.duration = -1;
             todex.location = APPLY_DEX;
             todex.modifier = mod/2;
-            todex.bitvector = 0;
             affect_to_char( victim, &todex);
 
             act_p("Острые шипы вонзаются в ступни $C2, стесняя движения и вызывая хромоту.",ch,0,victim,TO_CHAR,POS_RESTING);
@@ -1123,7 +1108,7 @@ void ThrowDownOneHit::calcDamage( )
 
 SKILL_RUNP( throwdown )
 {
-        Debug d(ch, "ninja", "throw");
+        Debug d(ch, "debug_ninja", "throw");
         Character *victim;
         float chance, skill_mod, stat_mod, level_mod, quick_mod, size_mod, sleep_mod, vis_mod;
         bool FightingCheck;
@@ -1303,7 +1288,7 @@ SKILL_RUNP( throwdown )
                         ch,0,victim,TO_VICT,POS_RESTING);
                 act_p("$c1 бросает $C4 с {Wошеломляющей силой{x.",
                         ch,0,victim,TO_NOTVICT,POS_RESTING);
-                victim->setWaitViolence( 2 + max(2, ch->getCurrStat(STAT_STR) - victim->getCurrStat(STAT_STR)) );
+                victim->setWaitViolence( 2 + URANGE (0, ch->getCurrStat(STAT_STR) - victim->getCurrStat(STAT_STR), 2) );
 
                 victim->position = POS_RESTING;
                 if (is_flying( victim )) {
@@ -1352,21 +1337,21 @@ SKILL_RUNP( throwdown )
 
 SKILL_RUNP( strangle )
 {
-        Debug d(ch, "ninja", "strangle");
+        Debug d(ch, "debug_ninja", "strangle");
         Character *victim;
         Affect af;    
         float chance, skill_mod, stat_mod, level_mod, quick_mod, size_mod, sleep_mod, vis_mod, time_mod;
         char arg[MAX_INPUT_LENGTH];
         
         //////////////// BASE MODIFIERS //////////////// TODO: add this to XML
-        skill_mod   = 0.2;
+        skill_mod   = 0.5;
         stat_mod    = 0.04;
         level_mod   = 0.01;
         quick_mod   = 0.1;
         size_mod    = -0.03; // HARDER to affect smaller victims, easier to affect larger
         sleep_mod   = 0.1;
         vis_mod     = 0.1;
-        time_mod    = 0.05;
+        time_mod    = 0.1;
 
         //////////////// ELIGIBILITY CHECKS ////////////////
 
@@ -1503,7 +1488,7 @@ SKILL_RUNP( strangle )
             d.log(chance, "backguard");
         }
 
-        int k = ch->getLastFightDelay( );
+        int k = victim->getLastFightDelay( );
         if (k >= 0 && k < FIGHT_DELAY_TIME) {
             chance -= (FIGHT_DELAY_TIME - k) * time_mod * 100;
             d.log(chance, "adrenaline");
@@ -1533,12 +1518,10 @@ SKILL_RUNP( strangle )
                 gsn_strangle->improve( ch, true, victim );
         
                 af.type = gsn_strangle;
-                af.where = TO_AFFECTS;
+                af.bitvector.setTable(&affect_flags);
                 af.level = ch->getModifyLevel();
-                af.duration = ch->getModifyLevel() / 20 + 1;
-                af.location = APPLY_NONE;
-                af.modifier = 0;
-                af.bitvector = AFF_SLEEP;
+                af.duration = ch->getModifyLevel() / 50 + 1;
+                af.bitvector.setValue(AFF_SLEEP);
                 affect_join ( victim,&af );
                 
                 set_violent( ch, victim, true );
@@ -1564,7 +1547,6 @@ SKILL_RUNP( strangle )
 
 SKILL_RUNP( poison )
 {
-        Character *tmp_vict;
 
         if (ch->is_npc())
                 return;
@@ -1597,7 +1579,7 @@ SKILL_RUNP( poison )
 
         gsn_poison_smoke->improve( ch, true );
 
-        for ( tmp_vict=ch->in_room->people; tmp_vict!=0; tmp_vict=tmp_vict->next_in_room )
+        for ( auto &tmp_vict : ch->in_room->getPeople() )
         {
                 if ( !is_safe_spell(ch,tmp_vict,true) )
                 {
@@ -1658,9 +1640,9 @@ SKILL_RUNP( blindness )
 
 BOOL_SKILL( blindness )::run( Character *ch ) 
 {
-    Character *tmp_vict;
+ 
 
-    for ( tmp_vict=ch->in_room->people; tmp_vict!=0; tmp_vict=tmp_vict->next_in_room )
+    for ( auto &tmp_vict : ch->in_room->getPeople() )
     {
         if (!is_safe_spell(ch,tmp_vict,true))
         {

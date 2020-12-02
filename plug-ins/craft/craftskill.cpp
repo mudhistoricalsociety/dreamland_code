@@ -108,18 +108,17 @@ bool CraftSkill::canTeach( NPCharacter *mob, PCharacter *ch, bool verbose )
 
     if (verbose)
         ch->pecho( "%1$^C1 не может научить тебя искусству '%2$s'.\n"
-               "Для большей информации используй: {y{hc{lRумение %2$s{lEslook %2$s{x, {y{lRгруппаумен {Dгруппа{y{lEglist {Dгруппа{x.",
+               "Учителя можно найти, прочитав справку по этому умению.", 
                mob, getNameFor( ch ).c_str( ) );
     return false;
 }
 
-void CraftSkill::show( PCharacter *ch, std::ostream &buf )
+void CraftSkill::show( PCharacter *ch, std::ostream &buf ) const
 {
-    buf << skill_what(this).ruscase('1').upperFirstCharacter() 
-        << " '{c" << getName( ) << "{x' или"
-        << " '{c" << getRussianName( ) << "{x', "
-        << "входит в группу '{hg{c" << getGroup()->getNameFor(ch) << "{x'." 
-        << endl << endl;
+    buf << print_what(this) << " "
+        << print_names_for(this, ch)
+        << print_group_for(this, ch)
+        << ".{x" << endl;
 
     StringList pnames; 
     CraftProfessions::const_iterator sp;
@@ -130,9 +129,7 @@ void CraftSkill::show( PCharacter *ch, std::ostream &buf )
     }
 
     if (!pnames.empty())
-        buf << "Доступно профессии " << pnames.wrap("{W", "{x").join(", ") << "." << endl;
-
-    print_see_also(this, ch, buf);
+        buf << SKILL_INFO_PAD << "Доступно профессии " << pnames.wrap("{W", "{x").join(", ") << "." << endl;
 } 
 
 static void mprog_skill( Character *ch, Character *actor, const char *skill, bool success, Character *victim )
@@ -153,6 +150,7 @@ void CraftSkill::improve( Character *ch, bool success, Character *victim, int da
 {
     PCharacter *pch;
     int chance, xp;
+    const Skill *thiz = static_cast<const Skill *>(this);
     
     if (ch->is_npc( ))
         return;
@@ -189,9 +187,8 @@ void CraftSkill::improve( Character *ch, bool success, Character *victim, int da
         if (number_percent( ) >= chance)
             return;
             
-        act_p("{GТеперь ты гораздо лучше владеешь искусством '$t'!{x",
-                pch, getNameFor( pch ).c_str( ), 0, TO_CHAR, POS_DEAD);
-            
+        pch->pecho("{GТеперь ты гораздо лучше владеешь искусством '%K'!{x", thiz);
+
         data.learned++;
     }
     else {
@@ -205,8 +202,7 @@ void CraftSkill::improve( Character *ch, bool success, Character *victim, int da
         if (number_percent( ) >= chance)
             return;
 
-        act_p("{GТы учишься на своих ошибках, и твое умение '$t' совершенствуется.{x",
-                pch, getNameFor( pch ).c_str( ), 0, TO_CHAR, POS_DEAD);
+        pch->pecho("{GТы учишься на своих ошибках, и твое умение '%K' совершенствуется.{x", thiz);
         
         data.learned += number_range( 1, wis_mod );
         data.learned = min( (int)data.learned, getMaximum( pch ) );
@@ -219,8 +215,7 @@ void CraftSkill::improve( Character *ch, bool success, Character *victim, int da
         xp += data.learned / 4;
 
     if (data.learned >= getMaximum( pch )) {
-        act_p("{WТеперь ты {Cмастерски{W владеешь искусством {C$t{W!{x",
-              pch, getNameFor( pch ).c_str( ), 0, TO_CHAR, POS_DEAD);
+        pch->pecho("{WТеперь ты {Cмастерски{W владеешь искусством {C%K{W!{x", thiz);
         
         xp += 98 * getRating( pch );
     }

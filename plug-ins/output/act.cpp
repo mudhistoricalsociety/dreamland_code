@@ -21,6 +21,7 @@
 #include "pcrace.h"
 #include "object.h"
 #include "room.h"
+#include "skill.h"
 
 #include "descriptor.h"
 #include "colour.h"
@@ -161,6 +162,9 @@ protected:
     virtual DLString argStr() {
         return DLString(d.string);
     }
+    virtual const Skill * argSkill() {
+        return d.skill;
+    }
     virtual Grammar::Noun::Pointer argNoun(int nounFlags) {
         return dynamic_cast<const Grammar::NounHolder *>(d.obj)->toNoun(to, nounFlags);
     }
@@ -174,6 +178,7 @@ private:
         Character *ch;
         Object *obj;
         RussianString *rstr;
+        const Skill *skill;
     } arg_t;
     arg_t args[MAXARGS], d;
     int argcnt;
@@ -340,7 +345,7 @@ void player_fmt( const DLString &format, PCMemoryInterface *pc, ostringstream &b
         case 'p':
             if (pch) {
                 ostringstream titleBuf;
-                vistags_convert( pch->getParsedTitle().c_str(), titleBuf, to );             
+                mudtags_convert( pch->getParsedTitle().c_str(), titleBuf, TAGS_CONVERT_VIS, to );             
                 word = titleBuf.str();
             }
             break;

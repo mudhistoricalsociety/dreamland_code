@@ -8,7 +8,6 @@
 class DLString;
 class Character;
 class Room;
-struct extra_exit_data;
 struct exit_data;
 
 struct direction_t {
@@ -19,6 +18,8 @@ struct direction_t {
     const char * leave;
     const char * enter;
     const char * where;
+    const char * rname_extra_1;
+    const char * rname_extra_2;
 };
 
 extern const struct direction_t dirs [];
@@ -49,7 +50,5 @@ bool direction_range_argument(const DLString &cargs, DLString &argDoor, DLString
 #define FEX_NO_EMPTY (C)
 #define FEX_VERBOSE  (D)
 int find_exit( Character *ch, const char *arg, int flags );
-
-extra_exit_data * get_extra_exit ( const char * name, extra_exit_data * list);
 
 #endif

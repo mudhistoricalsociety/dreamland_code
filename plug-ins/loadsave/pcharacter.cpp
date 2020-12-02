@@ -37,6 +37,8 @@ GSN(bat_sworm);
 GSN(bat_swarm);
 GSN(ground_strike);
 GSN(critical_strike);
+GSN(dominate);
+GSN(control_animal);
 
 static void skill_exchange( PCharacter *ch, SkillReference &skill1, SkillReference &skill2 )
 {
@@ -112,7 +114,7 @@ void PCharacter::updateSkills( )
         }
 
         // Count and store total number of skills available at this level.
-        if (skill->available(this))
+        if (data.origin == SKILL_PRACTICE && skill->available(this))
             availCounter++;
     }
 
@@ -175,7 +177,7 @@ bool PCharacter::load( )
         }
     }
     
-    if (!get_room_index( start_room )) {
+    if (!get_room_instance( start_room )) {
         if (is_immortal( ))
             start_room = ROOM_VNUM_CHAT;
         else
@@ -213,16 +215,18 @@ bool PCharacter::load( )
     clear_fenia_skills( this );
     
     // Put player to a room, so that onEquip mobprog that send messages or spellbane won't crash
-    char_to_room(this, get_room_index(ROOM_VNUM_LIMBO));
-
-    /* now start adding back the effects */
+    char_to_room(this, get_room_instance(ROOM_VNUM_LIMBO));
+   
+    /* Now add back spell effects. */
+    for (auto &af: affected)
+        affect_modify( this, af, true );
+    
+    /* Now start adding back the effects from items. Some of the items may add their own affects via onEquip progs,
+     * so it's important to execute these two loops in this particular order, to avoid calling affect_modify twice.
+     */
     for (Object *obj = carrying; obj != 0; obj = obj->next_content) 
         obj->wear_loc->reset( obj );
 
-    /* now add back spell effects */
-    for (Affect *af = affected; af != 0; af = af->next)
-        affect_modify( this, af, true );
-    
     position = (position == POS_FIGHTING ? POS_STANDING: position);
     REMOVE_BIT(act, PLR_NO_EXP|PLR_DIGGED); 
     update_stats(this);
@@ -235,6 +239,7 @@ bool PCharacter::load( )
     skill_exchange( this, gsn_dispel_magic, gsn_dispel_affects );
     skill_exchange( this, gsn_bat_sworm, gsn_bat_swarm );
     skill_exchange( this, gsn_ground_strike, gsn_critical_strike );
+    skill_exchange( this, gsn_control_animal, gsn_dominate );
 
     // Move player out of the room, to be placed to the start room correctly further down the way.
     char_from_room(this);
@@ -243,13 +248,13 @@ bool PCharacter::load( )
 
 void PCharacter::save( )
 {
-    static const char * METHOD = "PCharacter::save( )";
-//    ProfilerBlock be(METHOD);
+    static const char * METHOD = " PCharacter::save()";
+    ProfilerBlock profiler(getName() + METHOD, 100);
 
     DLFileWrite tmpfile( dreamland->getBasePath( ), dreamland->getTempFile( ) );
 
     if (!tmpfile.open( )) {
-        LogStream::sendError( ) << METHOD << " bad tmp for " << getName( ) << endl;
+        LogStream::sendError( ) << getName() << METHOD << " bad tmp file" << endl;
         return;
     }
 

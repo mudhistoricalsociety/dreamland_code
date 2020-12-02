@@ -89,7 +89,6 @@ Room * RoomWrapper::getTarget( ) const
     return WrapperManager::getThis( )->getWrapper(target->x); \
 }
 
-GETWRAP( rnext, "указывает на след. комнату в глобальном списке .room_list" )
 GETWRAP( contents, "указывает на первый предмет на полу комнаты" )
 GETWRAP( people, "указывает на первого чара в комнате" )
 
@@ -102,19 +101,19 @@ NMI_GET( RoomWrapper, vnum , "номер комнаты в арии")
 NMI_GET( RoomWrapper, name , "название комнаты")
 {
     checkTarget( );
-    return Register( target->name );
+    return Register( target->getName() );
 }
 
 NMI_GET( RoomWrapper, areaname , "имя арии")
 {
     checkTarget( );
-    return Register( target->area->name );
+    return Register( target->areaName() );
 }
 
 NMI_GET( RoomWrapper, area, "экземпляр Area для этой комнаты")
 {
     checkTarget( );
-    return AreaWrapper::wrap( target->area->area_file->file_name );
+    return AreaWrapper::wrap( target->areaIndex()->area_file->file_name );
 }
 
 NMI_GET(RoomWrapper, ppl, "список (List) всех чаров в комнате")
@@ -150,7 +149,7 @@ NMI_GET( RoomWrapper, items, "список (List) всех предметов н
 NMI_GET( RoomWrapper, sector_type , "значение типа местности (таблица .sector_table)")
 {
     checkTarget( );
-    return Register( target->sector_type );
+    return Register( target->getSectorType() );
 }
 
 NMI_GET( RoomWrapper, affected_by, "биты аффектов на комнате (таблица .tables.affect_flags)" )
@@ -186,13 +185,13 @@ NMI_GET( RoomWrapper, light, "количество источников свет
 NMI_GET( RoomWrapper, description, "описание комнаты" )
 {
     checkTarget( );
-    return Register( target->description );
+    return Register( target->getDescription() );
 }
 
 NMI_GET( RoomWrapper, clan, "имя клана, которому принадлежит комната" )
 {
     checkTarget();
-    return Register( target->clan->getShortName( ) );
+    return Register( target->pIndexData->clan->getShortName( ) );
 }
 
 static Scripting::Register get_direction( Room *r, int dir )
@@ -583,7 +582,7 @@ struct FeniaDoorFunc {
             return false;
         
         Room *toRoom = exit->u1.to_room;
-        bitstring_t mysector = (1 << toRoom->sector_type);
+        bitstring_t mysector = (1 << toRoom->getSectorType());
 
         if (sectorsAllow != 0 && !IS_SET(sectorsAllow, mysector))
             return false;
@@ -731,7 +730,7 @@ NMI_GET( RoomWrapper, resetMobiles, "список внумов мобов, ко�
     
     checkTarget( );
     
-    for (pReset = target->reset_first; pReset; pReset = pReset->next)
+    for (pReset = target->pIndexData->reset_first; pReset; pReset = pReset->next)
         if (pReset->command == 'M')
             rc->push_back( Register( pReset->arg1 ) );
 

@@ -36,8 +36,8 @@
 #include "race.h"
 #include "racelanguage.h"
 #include "religion.h"
+#include "affectlist.h"
 
-class Affect;
 class PCharacter;
 class NPCharacter;
 class Object;
@@ -57,9 +57,7 @@ enum {
     FMT_PRETITLE = 4,
 };
 
-struct PlayerConfig : public virtual DLObject {
-    typedef ::Pointer<PlayerConfig> Pointer;
-
+struct PlayerConfig {
     PlayerConfig( );
     PlayerConfig( const PCharacter * );
 
@@ -214,7 +212,7 @@ public:
     void dismount( );
     
     // configuration
-    virtual PlayerConfig::Pointer getConfig( ) const = 0;
+    virtual PlayerConfig getConfig( ) const = 0;
 
 protected:
     XML_VARIABLE XMLLongLong ID;
@@ -240,7 +238,7 @@ public:
     Character *                        fighting;
     Character *                        last_fought;
     Descriptor *                desc;
-    Affect *                        affected;
+    AffectList                  affected;
     Object *                        carrying;
     Object *                        on;
     Room *                        in_room;

@@ -101,7 +101,7 @@ bool ExitsMovement::findTargetRoom( )
         int targetVnum = (rc.empty( ) || !rc.isNumber( ) ? 0 : rc.toInt( ));
 
         if (targetVnum != 0) {
-            to_room = get_room_index(targetVnum);
+            to_room = get_room_instance(targetVnum);
         }
     }
 
@@ -137,7 +137,7 @@ void ExitsMovement::randomizeExits( )
         }
     }
     
-    for (EXTRA_EXIT_DATA *pee = from_room->extra_exit; pee; pee = pee->next) {
+    for (auto &pee: from_room->extra_exits) {
         if (!ch->can_see( pee ))
             continue;
 
@@ -216,8 +216,8 @@ bool ExitsMovement::checkClosedDoor( Character *wch )
         return true;
 
     msgSelfParty( wch,
-                    "%4$^N1: тут закрыто.",
-                    "%4$^N1: тут закрыто." );    
+                    "Тут закрыто, попробуй {y{hcоткрыть %4$N4{x.",
+                    "Тут закрыто, попробуй {y{hcоткрыть %4$N4{x." );
     return false;
 }
 
@@ -338,20 +338,16 @@ int ExitsMovement::getPassDoorLevel( Character *wch )
     if (wch->getRace( )->getAff( ).isSet( AFF_PASS_DOOR ))
         return wch->getModifyLevel( ) * 11 / 10; 
 
-    for (Affect *paf = wch->affected; paf; paf = paf->next)
-        if (paf->where == TO_AFFECTS && IS_SET(paf->bitvector, AFF_PASS_DOOR))
-            castLevel = max( castLevel, (int)paf->level );
+    for (auto &paf: wch->affected.findAllWithBits(&affect_flags, AFF_PASS_DOOR))
+        castLevel = max( castLevel, (int)paf->level );
 
     for (Object *obj = wch->carrying; obj; obj = obj->next_content)
-        if (obj->wear_loc != wear_none) {
-            for (Affect *paf = obj->affected; paf; paf = paf->next)
-                if (paf->where == TO_AFFECTS && IS_SET(paf->bitvector, AFF_PASS_DOOR))
-                    eqLevel = max( eqLevel, obj->level );
+        if (obj->wear_loc->givesAffects()) {
+            if (obj->affected.findAllWithBits(&affect_flags, AFF_PASS_DOOR).size() > 0)
+                eqLevel = max( eqLevel, obj->level );
 
-            if (!obj->enchanted)
-                for (Affect *paf = obj->pIndexData->affected; paf; paf = paf->next)
-                    if (paf->where == TO_AFFECTS && IS_SET(paf->bitvector, AFF_PASS_DOOR))
-                        eqLevel = max( eqLevel, obj->level );
+            if (!obj->enchanted && obj->pIndexData->affected.findAllWithBits(&affect_flags, AFF_PASS_DOOR).size() > 0)
+                eqLevel = max( eqLevel, obj->level );
         }
 
     return max( 0, max( eqLevel, castLevel ) );
@@ -361,8 +357,8 @@ int ExitsMovement::getMoveCost( Character *wch )
 {
     int move;
     
-    move = terrains[from_room->sector_type].move
-            + terrains[to_room->sector_type].move;
+    move = terrains[from_room->getSectorType()].move
+            + terrains[to_room->getSectorType()].move;
 
     move /= 2;  /* i.e. the average */
 
@@ -381,7 +377,7 @@ void ExitsMovement::setWaitstate( )
     int waittime = 0;
     
     waittime += movetypes[movetype].wait;
-    waittime += terrains[from_room->sector_type].wait;
+    waittime += terrains[from_room->getSectorType()].wait;
     
     ch->setWait( waittime );
 }
@@ -461,7 +457,7 @@ int ExitsMovement::adjustMovetype( Character *wch )
     if (IS_GHOST( wch ))
         return MOVETYPE_FLYING;
 
-    if (from_room->sector_type == SECT_WATER_NOSWIM || to_room->sector_type == SECT_WATER_NOSWIM)
+    if (from_room->getSectorType() == SECT_WATER_NOSWIM || to_room->getSectorType() == SECT_WATER_NOSWIM)
         switch (boat_type) {
         case BOAT_INV:
         case BOAT_EQ:

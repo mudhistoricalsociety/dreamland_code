@@ -48,6 +48,7 @@
 #include "directions.h"
 #include "attract.h"
 #include "occupations.h"
+#include "terrains.h"
 #include "move_utils.h"
 #include "act_lock.h"
 #include "../anatolia/handler.h"
@@ -276,7 +277,7 @@ DLString format_obj_to_char( Object *obj, Character *ch, bool fShort )
                 && !IS_SET(obj->extra_flags, ITEM_WATER_STAND)) 
         {
             DLString msg;
-            DLString liq = obj->in_room->liquid->getShortDescr( );
+            DLString liq = obj->in_room->pIndexData->liquid->getShortDescr( );
 
             msg << "%1$^O1 ";
 
@@ -458,8 +459,8 @@ void show_room_affects_to_char(Room *room, Character *ch, ostringstream &mainBuf
 {
 	ostringstream buf;
 		
-    for (Affect *paf = ch->in_room->affected; paf != 0; paf = paf->next)
-        if (paf->type->getAffect( ))
+    for (auto &paf: room->affected)
+        if (paf->type->getAffect())
             paf->type->getAffect( )->toStream( buf, paf );
 
     if (!buf.str().empty())
@@ -611,7 +612,7 @@ void show_char_to_char_0( Character *victim, Character *ch )
         buf << "({DНевидимо{x)";
 
     if (IS_AFFECTED(victim, AFF_IMP_INVIS))
-        buf << "(Improved)";
+        buf << "({DОчень невидимо{x)";
 
     if (IS_AFFECTED(victim, AFF_HIDE))
         buf << "({DУкрыто{x)";
@@ -659,6 +660,7 @@ void show_char_to_char_0( Character *victim, Character *ch )
 
     if (nVict) 
         if (nVict->position == nVict->start_pos 
+            && !nVict->on
             && nVict->getLongDescr( ) 
             && nVict->getLongDescr( )[0])
         {
@@ -676,7 +678,7 @@ void show_char_to_char_0( Character *victim, Character *ch )
         webManipManager->decorateCharacter(buf, ch->sees( victim, '1' ), victim, ch);
     }
     else {
-        if (ch->getConfig( )->holy && origVict != victim)
+        if (ch->getConfig( ).holy && origVict != victim)
             buf << "{" << CLR_PLAYER(ch) << ch->sees( origVict, '1' ) << "{x "
                 << "(под личиной " << ch->sees( victim, '2' ) << ") ";
         else {
@@ -701,7 +703,7 @@ void show_char_to_char_0( Character *victim, Character *ch )
         break;
         
     case POS_MORTAL:   
-        buf << "присмерти." << endl;   
+        buf << "при смерти." << endl;   
         break;
         
     case POS_INCAP:    
@@ -738,7 +740,7 @@ void show_char_to_char_0( Character *victim, Character *ch )
         else if (victim->in_room == victim->fighting->in_room)
             buf << "с " << ch->sees( victim->fighting, '5') << ".";
         else
-            buf << "кем-то кто ушел...";
+            buf << "кем-то, кто ушел...";
 
         buf << endl;
         show_char_blindness( ch, victim, buf );
@@ -746,7 +748,7 @@ void show_char_to_char_0( Character *victim, Character *ch )
     }
 
     if (HAS_SHADOW(victim))
-        buf << " ... отбрасывает странную тень." << endl;
+        buf << " ...отбрасывает странную тень." << endl;
     
     if (victim->death_ground_delay > 0) {
         DLString rc = rprog_show_end( victim->in_room, victim, ch );
@@ -827,7 +829,7 @@ void show_char_wounds( Character *ch, Character *victim, ostringstream &buf )
     else if (percent >=  30)
         buf << "{Y имеет несколько больших, опасных ран и царапин";
     else if (percent >= 15)
-        buf << "{M выглядит сильно поврежденным";
+        buf << fmt(ch, "{M выглядит сильно поврежденн%1$Gым|ым|ой", victim);
     else if (percent >= 0 )
         buf << "{R в ужасном состоянии";
     else
@@ -870,7 +872,7 @@ static void show_char_sexrace( Character *ch, Character *vict, ostringstream &bu
 {
     buf << "(";
 
-    if (ch->getConfig( )->rucommands)
+    if (ch->getConfig( ).rucommands)
         buf << vict->getRace( )->getNameFor( ch, vict );
     else
         buf << GET_SEX(vict, "male", "sexless", "female")
@@ -1158,7 +1160,7 @@ struct ExtraDescList : public list<EDInfo> {
 
         for (count = 1, i = begin( ); i != end( ); i++, count++)
             if (count == number) {
-                EXTRA_DESCR_DATA *sourceEdList = i->source ? i->source->pIndexData->extra_descr : i->sourceRoom->extra_descr;
+                EXTRA_DESCR_DATA *sourceEdList = i->source ? i->source->pIndexData->extra_descr : i->sourceRoom->getExtraDescr();
                 buf << "{x";
                 webManipManager->decorateExtraDescr( buf, i->description.c_str( ), sourceEdList, ch );
                 buf << endl;
@@ -1186,7 +1188,7 @@ static bool do_look_extradescr( Character *ch, const char *arg, int number )
     
     edlist.putObjects( ch->carrying );
     edlist.putObjects( ch->in_room->contents );
-    edlist.putDescriptions( ch->in_room->extra_descr, 0, ch->in_room );
+    edlist.putDescriptions( ch->in_room->getExtraDescr(), 0, ch->in_room );
 
     return edlist.output( );
 }
@@ -1218,11 +1220,11 @@ rprog_eexit_descr( Room *room, EXTRA_EXIT_DATA *peexit, Character *ch, const DLS
         return;
     }
     
-    buf << "{" << CLR_RNAME(ch) << room->name << "{x";
+    buf << "{" << CLR_RNAME(ch) << room->getName() << "{x";
 
-    if (ch->getConfig( )->holy) 
+    if (ch->getConfig( ).holy) 
         buf << " {" << CLR_RVNUM(ch) << "[Room " << room->vnum
-            << "][" << room->area->name << "]{x";
+            << "][" << room->areaName() << "]{x";
 
     buf << " " << web_edit_button(ch, "redit|show", room->vnum);
     
@@ -1231,18 +1233,16 @@ rprog_eexit_descr( Room *room, EXTRA_EXIT_DATA *peexit, Character *ch, const DLS
     if (!fBrief)
     {
         ostringstream rbuf;
-        const char *dsc = room->description;
+        const char *dsc = room->getDescription();
 
         if (*dsc == '.')
             ++dsc;
         else
             rbuf << " ";
         
-        webManipManager->decorateExtraDescr( rbuf, dsc, room->extra_descr, ch );
+        webManipManager->decorateExtraDescr( rbuf, dsc, room->getExtraDescr(), ch );
 
-        for (EXTRA_EXIT_DATA *peexit = room->extra_exit;
-                                peexit;
-                                peexit = peexit->next)
+        for (auto &peexit: room->extra_exits)
             if (ch->can_see( peexit ))
                 rbuf << rprog_eexit_descr(room, peexit, ch, peexit->room_description);
 
@@ -1270,7 +1270,7 @@ static void do_look_move( Character *ch, bool fBrief )
         if (eyes_darkened( ch ))
             ch->println( "Здесь слишком темно ... " );
         else
-            ch->printf( "{W%s{x\r\n", ch->in_room->name );
+            ch->printf( "{W%s{x\r\n", ch->in_room->getName() );
         return;
     }
 
@@ -1301,14 +1301,8 @@ static void do_look_into( Character *ch, char *arg2 )
 
 static void afprog_look( Character *looker, Character *victim )
 {
-    Affect *paf, *paf_next;
-    
-    for (paf = victim->affected; paf; paf = paf_next) {
-        paf_next = paf->next;
-
-        if (paf->type->getAffect( ))
-            paf->type->getAffect( )->look( looker, victim, paf );
-    }
+    for (auto &paf: victim->affected.findAllWithHandler())
+        paf->type->getAffect( )->look( looker, victim, paf );
 }
 
 static void mprog_look(Character *looker, Character *victim)
@@ -1421,7 +1415,7 @@ static void do_look_object( Character *ch, Object *obj )
 
 static bool do_look_extraexit( Character *ch, const char *arg3 )
 {
-    EXTRA_EXIT_DATA * peexit = get_extra_exit( arg3, ch->in_room->extra_exit );
+    EXTRA_EXIT_DATA * peexit = ch->in_room->extra_exits.find(arg3);
 
     if (!peexit)
         return false;
@@ -1598,13 +1592,8 @@ CMDRUNP( examine )
         show_char_to_char_1( victim, ch, true );
         return;
     }
-    
-    if ( ( obj = get_obj_here( ch, arg ) ) != 0 ) {
-        oprog_examine( obj, ch, argument );
-        return;
-    }
 
-    ch->println( "Ты не видишь этого тут." );
+    do_look_into(ch, arg);
 }
 
 
@@ -1671,8 +1660,13 @@ static bool oprog_examine_container( Object *obj, Character *ch, const DLString 
 {
     ContainerKeyhole( ch, obj ).doExamine( );
 
+    if (IS_SET(obj->value1(), CONT_LOCKED)) {
+        ch->pecho("%1$^O1 заперт%1$Gо||а на ключ, сперва отопри.", obj);
+        return true;
+    }
+
     if (IS_SET(obj->value1(), CONT_CLOSED)) {
-        ch->println( "Тут закрыто." );
+        ch->pecho("%1$^O1 закрыт%1$Gо||а, сперва открой.", obj);
         return true;
     }
     
@@ -1684,6 +1678,13 @@ static bool oprog_examine_container( Object *obj, Character *ch, const DLString 
     }
     
     const char *p = pocket.c_str( );
+    const char *where;
+    if (obj->in_room)
+        where = terrains[obj->in_room->getSectorType()].where;
+    else if (obj->wear_loc == wear_none)
+        where = "в твоих руках";
+    else
+        where = "в твоей экипировке";
 
     if (IS_SET(obj->value1(),CONT_PUT_ON|CONT_PUT_ON2)) {
         if (!pocket.empty( ))
@@ -1699,7 +1700,7 @@ static bool oprog_examine_container( Object *obj, Character *ch, const DLString 
                 ch->pecho( "В кармане %1$O2 с надписью '%2$s' ты видишь:", obj, p );
         }
         else {
-            ch->pecho( "%1$^O1 содерж%1$nит|ат:", obj );
+            ch->pecho( "%1$^O1 %2s содерж%1$nит|ат:", obj, where );
         }
     }
 
@@ -1770,7 +1771,7 @@ static void show_exits_to_char( Character *ch, Room *targetRoom )
     EXIT_DATA *pexit;
     DLString ename;
     DLString cmd;
-    PlayerConfig::Pointer cfg;
+    PlayerConfig cfg;
     Room *room;
     bool found;
 
@@ -1789,23 +1790,23 @@ static void show_exits_to_char( Character *ch, Room *targetRoom )
         if (!ch->can_see( room ))
             continue;
 
-        ename = (cfg->ruexits ? dirs[door].rname : dirs[door].name);
+        ename = (cfg.ruexits ? dirs[door].rname : dirs[door].name);
         found = true;
 
         if (!IS_SET(pexit->exit_info, EX_CLOSED)) {
             cmd = ename;
             buf << " " << web_cmd(ch, cmd, ename);
         } else if (!IS_SET(pexit->exit_info, EX_LOCKED)) {
-            cmd = "{lRоткрыть{lEopen{lx " + ename;
+            cmd = (cfg.rucommands ? "открыть " : "open ") + ename;
             buf << " *" << web_cmd(ch, cmd, ename) << "*";
         } else {
-            cmd = "{lRотпереть{lEunlock{lx " + ename;
+            cmd = (cfg.rucommands? "отпереть " : "unlock ") + ename;
             buf << " *" << web_cmd(ch, cmd, ename) << "*";
         }
     }
     
     if (!found)
-        buf << (cfg->ruexits ? " нет" : " none");
+        buf << (cfg.ruexits ? " нет" : " none");
             
     buf << "]{x" << endl;
     ch->send_to( buf );
@@ -1817,7 +1818,7 @@ CMDRUNP( exits )
     EXIT_DATA *pexit;
     DLString ename;
     Room *room;
-    PlayerConfig::Pointer cfg;
+    PlayerConfig cfg;
     bool found;
     int door;
 
@@ -1844,16 +1845,16 @@ CMDRUNP( exits )
             continue;
 
         found = true;   
-        ename = (cfg->ruexits ? dirs[door].rname : dirs[door].name);
+        ename = (cfg.ruexits ? dirs[door].rname : dirs[door].name);
 
         if (!IS_SET(pexit->exit_info, EX_CLOSED))
         {
             buf << fmt(0, "    {C%-8s{x", ename.c_str()) << " - ";
 
-            if (room->isDark( ) && !cfg->holy && !IS_AFFECTED(ch, AFF_INFRARED ))
+            if (room->isDark( ) && !cfg.holy && !IS_AFFECTED(ch, AFF_INFRARED ))
                 buf << "Дорога ведет в темноту и неизвестность...";
             else
-                buf << room->name;
+                buf << room->getName();
 
             if (ch->is_immortal())
                 buf << " (room " << room->vnum << ")";
@@ -1880,7 +1881,7 @@ CMDRUNP( exits )
     found = false;
     buf.str("");
 
-    for (EXTRA_EXIT_DATA *eexit = ch->in_room->extra_exit; eexit; eexit = eexit->next) {
+    for (auto &eexit: ch->in_room->extra_exits) {
         if (ch->can_see(eexit)) {
             StringList names = name_list(eexit->keyword);
             DLString name, nameRus;

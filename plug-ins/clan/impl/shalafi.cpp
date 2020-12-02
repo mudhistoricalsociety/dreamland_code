@@ -300,13 +300,12 @@ VOID_SPELL(MentalKnife)::run( Character *ch, Character *victim, int sn, int leve
         
       if(!victim->isAffected(sn) && !saves_spell(level, victim, DAM_MENTAL, ch, DAMF_SPELL))
         {
-          af.where                    = TO_AFFECTS;
           af.type               = sn;
           af.level              = level;
           af.duration           = level;
-          af.location           = APPLY_INT;
+
           af.modifier           = ch->applyCurse( -7 );
-          af.bitvector          = 0;
+          af.location = APPLY_INT;
           affect_to_char(victim,&af);
 
           af.location = APPLY_WIS;
@@ -337,8 +336,7 @@ TYPE_SPELL(bool, MentalKnife)::spellbane( Character *, Character * ) const
 SPELL_DECL(Scourge);
 VOID_SPELL(Scourge)::run( Character *ch, Room *room, int sn, int level ) 
 { 
-  Character *tmp_vict;
-  Character *tmp_next;
+
   int dam;
 
   if( ch->getModifyLevel() < 40 )
@@ -347,10 +345,10 @@ VOID_SPELL(Scourge)::run( Character *ch, Room *room, int sn, int level )
         dam = dice(level,9);
   else dam = dice(level,12);
 
-  for (tmp_vict = room->people;tmp_vict != 0;
-       tmp_vict = tmp_next)
-    {
-      tmp_next = tmp_vict->next_in_room;
+
+        for(auto &tmp_vict : ch->in_room->getPeople())
+        {
+            if(!tmp_vict->isDead() && tmp_vict->in_room == ch->in_room){
 
         if ( tmp_vict->is_mirror()
             && ( number_percent() < 50 ) ) continue;
@@ -363,7 +361,7 @@ VOID_SPELL(Scourge)::run( Character *ch, Room *room, int sn, int level )
         
           if (!tmp_vict->isAffected(sn)) {
         
-
+          try{
             if (number_percent() < level)
               spell(gsn_poison, level, ch, tmp_vict);
 
@@ -375,12 +373,16 @@ VOID_SPELL(Scourge)::run( Character *ch, Room *room, int sn, int level )
 
             if (saves_spell(level,tmp_vict, DAM_FIRE, ch, DAMF_SPELL))
               dam /= 2;
-            damage( ch, tmp_vict, ch->applyCurse( dam ), sn, DAM_FIRE, true, DAMF_SPELL );
+            damage_nocatch( ch, tmp_vict, ch->applyCurse( dam ), sn, DAM_FIRE, true, DAMF_SPELL );
           }
-
+            catch (const VictimDeathException &) {
+                   continue;
+            }
+          }
         }
-    }
 
+      }
+    }
 }
 
 
@@ -401,22 +403,16 @@ VOID_SPELL(Transform)::run( Character *ch, Character *, int sn, int level )
 
   if( ch->isAffected(gsn_haste ) ) affect_strip( ch, gsn_haste );
 
-  af.where                = TO_AFFECTS;
   af.type               = sn;
   af.level              = level;
   af.duration           = 24;
-  af.location           = APPLY_HIT;
+
+  af.location = APPLY_HIT;
   af.modifier           = hp_modif;
-  af.bitvector          = 0;
   affect_to_char(ch,&af);
 
-    af.where     = TO_AFFECTS;
-    af.type      = sn;
-    af.level     = level;
-    af.duration  = 24;
-    af.location  = APPLY_DEX;
+    af.location = APPLY_DEX;
     af.modifier  = - (4 + level / 10);
-    af.bitvector = 0;
     affect_to_char( ch, &af );
 
   ch->send_to("Прилив жизненной силы затмевает твой разум.\n\r");

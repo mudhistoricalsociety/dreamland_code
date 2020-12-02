@@ -288,24 +288,21 @@ void reboot_anatolia( void )
 
 void eyes_blinded_msg( Character *ch )
 {
-    Affect *paf;
-
     if (!IS_AFFECTED(ch, AFF_BLIND))
         return;
 
-    for (paf = ch->affected; paf; paf = paf->next) 
-        if (paf->where == TO_AFFECTS && IS_SET(paf->bitvector, AFF_BLIND)) {
-            if (paf->type == gsn_fire_breath)
-                ch->println( "Твои глаза слезятся из-за дыма, и ты ничего не видишь." );
-            else if (paf->type == gsn_sand_storm)
-                ch->println( "Песок в глазах мешает тебе что-либо разглядеть." );
-            else if (paf->type == gsn_dirt_kicking)
-                ch->println( "Ты ничего не видишь из-за пыли, попавшей в глаза." );
-            else
-                continue;
+    for (auto &paf: ch->affected.findAllWithBits(&affect_flags, AFF_BLIND)) {
+        if (paf->type == gsn_fire_breath)
+            ch->println( "Твои глаза слезятся из-за дыма, и ты ничего не видишь." );
+        else if (paf->type == gsn_sand_storm)
+            ch->println( "Песок в глазах мешает тебе что-либо разглядеть." );
+        else if (paf->type == gsn_dirt_kicking)
+            ch->println( "Ты ничего не видишь из-за пыли, попавшей в глаза." );
+        else
+            continue;
 
-            return;
-        }
+        return;
+    }
 
     ch->println( "Твои глаза слепы, ты ничего не видишь!" );
 }
@@ -401,7 +398,7 @@ void extract_dead_player( PCharacter *ch, int flags )
     undig( ch );
     ch->dismount( );
     
-    if (( altar = get_room_index( ch->getHometown( )->getAltar( ) ) )) {
+    if (( altar = get_room_instance( ch->getHometown( )->getAltar( ) ) )) {
         char_from_room( ch );
         char_to_room( ch, altar );
     }

@@ -59,7 +59,7 @@ VOID_SPELL(Knock)::run( Character *ch, char *target_name, int sn, int level )
 { 
         char arg[MAX_INPUT_LENGTH];
         int chance=0;
-        int door;
+        int door = DIR_SOMEWHERE;
         Room *room = ch->in_room;
         EXTRA_EXIT_DATA *peexit = 0;
 
@@ -77,7 +77,7 @@ VOID_SPELL(Knock)::run( Character *ch, char *target_name, int sn, int level )
                 return;
         }
         
-        if ( ((peexit = get_extra_exit( arg, room->extra_exit )) && ch->can_see(peexit)) ||
+        if ( ((peexit = room->extra_exits.find(arg)) && ch->can_see(peexit)) ||
              (door = find_exit( ch, arg, FEX_NO_INVIS|FEX_DOOR|FEX_NO_EMPTY)) >= 0) 
         {
                 EXIT_DATA *pexit = 0;
@@ -179,13 +179,12 @@ SKILL_RUNP( sneak )
     if ( number_percent( ) < gsn_sneak->getEffective( ch ))
     {
         gsn_sneak->improve( ch, true );
-        af.where     = TO_AFFECTS;
+        af.bitvector.setTable(&affect_flags);
         af.type      = gsn_sneak;
         af.level     = ch->getModifyLevel();
         af.duration  = ch->getModifyLevel();
-        af.location  = APPLY_NONE;
-        af.modifier  = 0;
-        af.bitvector = AFF_SNEAK;
+        
+        af.bitvector.setValue(AFF_SNEAK);
         affect_to_char( ch, &af );
         ch->send_to("Ты начинаешь скрытно передвигаться.\n\r");
     } else {
@@ -220,10 +219,8 @@ SKILL_RUNP( hide )
                 return;
         }
 
-        int forest = ch->in_room->sector_type == SECT_FOREST ? 60 : 0;
-        forest += ch->in_room->sector_type == SECT_FIELD ? 60 : 0;
-
-        ch->send_to("Ты пытаешься скрыться.\n\r");
+        int forest = ch->in_room->getSectorType() == SECT_FOREST ? 60 : 0;
+        forest += ch->in_room->getSectorType() == SECT_FIELD ? 60 : 0;
 
         int k = ch->getLastFightDelay( );
 
@@ -234,11 +231,14 @@ SKILL_RUNP( hide )
                 
         if ( number_percent( ) < (gsn_hide->getEffective( ch ) - forest) * k / 100 )
         {
+                // TODO: add sector-specific messaging
+                ch->send_to("Ты скрываешь свое присутствие, используя особенности местности.\n\r");                
                 SET_BIT(ch->affected_by, AFF_HIDE);
                 gsn_hide->improve( ch, true );
         }
         else
         {
+                ch->send_to("Ты пытаешься скрыться, но терпишь неудачу.\n\r");                
                 if ( IS_AFFECTED(ch, AFF_HIDE) )
                         REMOVE_BIT(ch->affected_by, AFF_HIDE);
                 gsn_hide->improve( ch, false );
@@ -303,7 +303,7 @@ protected:
         else
             point = ch->leader->getPC( )->getHometown( )->getRecall( );
 
-        if (!( to_room = get_room_index( point ) )) {
+        if (!( to_room = get_room_instance( point ) )) {
             ch->pecho( "Ты окончательно заблудил%1$Gось|ся|ась.", ch );
             return false;
         }
@@ -322,7 +322,7 @@ protected:
             return checkPumped( );
         
         if (rated_as_guru( ch->getPC( ) )) {
-            ch->pecho( "Ты ведь не ищешь легких путей, не так ли?" );
+            ch->pecho( "Гуру не ищут легких путей." );
             return false;
         }
 
@@ -374,7 +374,7 @@ public:
 protected:
     virtual bool findTargetRoom( )
     {
-        peexit = get_extra_exit( arg, from_room->extra_exit );
+        peexit = from_room->extra_exits.find(arg);
         door = find_exit( ch, arg, FEX_NO_EMPTY|FEX_NO_INVIS );
 
         if ((!peexit || !ch->can_see( peexit )) && door < 0) {
@@ -467,7 +467,7 @@ SKILL_RUNP( escape )
     argument = one_argument( argument, arg );
 
     if (!gsn_escape->usable( ch )) {
-        ch->println( "Попробуй flee. Может, это тебя спасет?" );
+        ch->println( "Этот навык тебе недоступен, просто напиши {hc{y{leflee{lrсбежать{x." );
         return;
     }
 

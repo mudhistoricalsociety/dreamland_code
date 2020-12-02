@@ -78,16 +78,18 @@
 #include "object.h"
 
 #include "wiznet.h"
-#include "def.h"
 #include "handler.h"
+#include "weapons.h"
 #include "act_move.h"
 #include "vnum.h"
+#include "def.h"
 
 /***************************************************************************
  ************************      auction.c      ******************************
  ***************************************************************************/
 
 #define PULSE_AUCTION             (45 * dreamland->getPulsePerSecond( )) /* 60 seconds */
+#define AUC_TIMER_CUTOFF          24
 
 void talk_auction(const char *argument)
 {
@@ -107,7 +109,7 @@ void talk_auction(const char *argument)
         if (IS_SET(ch->getPC( )->comm, COMM_NOAUCTION))
             continue;
     
-        bool fRussian = ch->getConfig()->rucommands;
+        bool fRussian = ch->getConfig().rucommands;
         ch->pecho(POS_SLEEPING, fRussian ? msg_ru.c_str() : msg_en.c_str());
     }
 }
@@ -339,7 +341,11 @@ CMDRUNP( auction )
                                 ch->printf("Тип оружия: %s (%s), среднее повреждение %d.\r\n",
                                            weapon_class.message(obj->value0() ).c_str( ),
                                            weapon_class.name( obj->value0() ).c_str( ),
-                                          (1 + obj->value2()) * obj->value1() / 2);
+                                           weapon_ave(obj));
+                        }
+
+                        if (obj->timer != 0) {
+                            ch->pecho("{WЭтот предмет исчезнет через %1$d мину%1$Iту|ты|т после продажи.{x", obj->timer);
                         }
 
                         return;
@@ -479,10 +485,9 @@ CMDRUNP( auction )
                 return;
         }
 
-        if (obj->timer != 0)
+        if (obj->timer != 0 && obj->timer < AUC_TIMER_CUTOFF)
         {
-                sprintf( buf, "Этот предмет не может быть выставлен на аукцион, т.к. исчезнет через %d часов.\n\r", obj->timer );
-                ch->send_to( buf);
+                ch->pecho("Этот предмет не может быть выставлен на аукцион, т.к. он исчезнет всего через %1$d минут%1$Iу|ы|.", obj->timer);
                 return;
         }
 

@@ -228,8 +228,7 @@ VOID_SPELL(DispelGood)::run( Character *ch, Character *victim, int sn, int level
 SPELL_DECL(Earthquake);
 VOID_SPELL(Earthquake)::run( Character *ch, Room *room, int sn, int level ) 
 { 
-    Character *vch;
-    Character *vch_next;
+
     int dam;
 
     ch->send_to("Земля дрожит под твоими ногами!\n\r");
@@ -237,9 +236,10 @@ VOID_SPELL(Earthquake)::run( Character *ch, Room *room, int sn, int level )
 
     area_message( ch, "Земля слегка дрожит под твоими ногами.", true );
 
-    for (vch = room->people; vch != 0; vch = vch_next )
+    for ( auto &vch : room->getPeople() )
     {
-        vch_next        = vch->next_in_room;
+
+         if(!vch->isDead() && vch->in_room == room){   
 
         if (DIGGED(vch) && vch->was_in_room->area == room->area)
             if (!is_safe_nomessage( ch, vch ) && number_percent( ) < ch->getSkill( sn ) / 2)
@@ -259,13 +259,19 @@ VOID_SPELL(Earthquake)::run( Character *ch, Room *room, int sn, int level )
 
         dam = level + dice(3, 8);
 
-        switch (room->sector_type) {
+        switch (room->getSectorType()) {
         case SECT_MOUNTAIN: dam *= 4; break;
         case SECT_CITY:            dam *= 3; break;
         case SECT_INSIDE:   dam *= 2; break;
         }
 
+        try{
         damage_nocatch( ch, vch, dam, sn, DAM_BASH, true, DAMF_SPELL );
+        }
+        catch (const VictimDeathException &){
+            continue;
+        }
+    }
     }
 }
 
@@ -295,18 +301,18 @@ VOID_SPELL(Web)::run( Character *ch, Character *victim, int sn, int level )
         af.type      = sn;
         af.level     = level;
         af.duration  = 1 + level / 30;
-        af.location  = APPLY_HITROLL;
+        af.location = APPLY_HITROLL;
         af.modifier  = -1 * ( level / 6);
         affect_to_char( victim, &af );
 
-        af.location  = APPLY_DAMROLL;
+        af.location = APPLY_DAMROLL;
         af.modifier  = -1 * ( level / 6);
         affect_to_char( victim, &af );
 
-        af.location  = APPLY_DEX;
+        af.location = APPLY_DEX;
         af.modifier  = -1 - level / 40;
-        af.where     = TO_DETECTS;
-        af.bitvector = ADET_WEB;
+        af.bitvector.setTable(&detect_flags);
+        af.bitvector.setValue(ADET_WEB);
         affect_to_char( victim, &af );
 
         victim->send_to("Густая паутина опутывает тебя!\n\r");

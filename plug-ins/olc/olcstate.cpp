@@ -181,7 +181,7 @@ bool OLCState::can_edit( Character *ch, int vnum )
     return false;
 }
 
-bool OLCState::can_edit( Character *ch, AREA_DATA *pArea )
+bool OLCState::can_edit( Character *ch, AreaIndexData *pArea )
 {
     if (!ch->is_npc( )) {
         XMLAttributeOLC::Pointer attr;
@@ -212,11 +212,9 @@ bool OLCState::can_edit( Character *ch, AREA_DATA *pArea )
 }
 
 /* returns corresponding area pointer for mob/room/obj vnum */
-AREA_DATA *OLCState::get_vnum_area(int vnum)
+AreaIndexData *OLCState::get_vnum_area(int vnum)
 {
-    AREA_DATA *pArea;
-
-    for (pArea = area_first; pArea; pArea = pArea->next)
+    for(auto &pArea: areaIndexes)
         if (vnum >= pArea->min_vnum && vnum <= pArea->max_vnum)
             return pArea;
         
@@ -289,10 +287,14 @@ OLCState::xmledit(XMLDocument::Pointer &xml)
         XMLDocument::Pointer doc(NEW);
         istringstream is( buf );
         doc->load( is );
+
+        if (!doc->getFirstNode())
+            throw Exception("empty root node. Use 'behavior clear' instead.");
+
         xml = doc;
         return true;
-    } catch(const exception &e ) {
-        owner->send((DLString("xml parse error: ") + e.what( ) + "\r\n").c_str( ));
+    } catch (const exception &e) {
+        owner->send((DLString("XML parse error: ") + e.what( ) + "\r\n").c_str( ));
     }
     return false;
 }
@@ -619,6 +621,9 @@ static void apply_flags(DLString &original, editor_flags flags)
         original.upperFirstCharacter();
     }
 
+    if (IS_SET(flags, ED_UPPERCASE))
+        original.toUpper();
+
     if (IS_SET(flags, ED_NO_NEWLINE)) {
         original.erase( 
             original.find_last_not_of('\r') + 1);
@@ -681,6 +686,8 @@ bool OLCState::editorWeb(const DLString &original, const DLString &saveCommand, 
 
     if (IS_SET(flags, ED_HELP_HINTS))
         interpret_raw(ch, "webedit", "help");
+    else if (IS_SET(flags, ED_JSON))
+        interpret_raw(ch, "webedit", "json");
     else
         interpret_raw(ch, "webedit");
         

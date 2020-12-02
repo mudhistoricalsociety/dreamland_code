@@ -71,7 +71,7 @@ DreamLand::DreamLand( )
           rebootCounter( -1 ),
           workingOptions( 0, &dreamland_flags ),
           options( DEFAULT_OPTIONS, &dreamland_flags ),
-          dbEnv( new DbEnvContext( ) )
+          feniaDbEnv( new DbEnvContext( ) )
 {
         checkDuplicate( dreamland );
         dreamland = this;
@@ -134,7 +134,7 @@ DreamLand::~DreamLand( )
         servletManager.clear( );
         socketManager.clear( );
 
-        getDbEnv( )->close( );
+        getFeniaDbEnv( )->close( );
         
         dreamland = 0;
 }
@@ -228,7 +228,7 @@ void DreamLand::load( bool recursive )
             LogStream::redirect(new FileLogStream(logFile.getPath( )));
         }
 
-        getDbEnv( )->open( DLFile( getBasePath( ), feniaDbDir ).getPath( ) );
+        getFeniaDbEnv( )->open( DLFile( getBasePath( ), feniaDbDir ).getPath( ) );
         
         feniaManager->open( );
         feniaManager->load( );
@@ -286,5 +286,21 @@ void DreamLand::signalHandler( int signo )
 {
     LogStream::sendWarning( ) << "Caught signal "<< signo << "." << endl;
     dreamland->shutdown( );
+}
+
+
+/*
+ * Enforce generation of references to weakly-defined symbols in src, so that if the same symbol is defined by two
+ * different plugins, the reference would always resolve in favour of libdreamland.so. This prevents a situation
+ * when both plugins have a reference to, say, std::_Sp_make_shared_tag::_S_ti()::__tag, and one of them always 
+ * fails to unload because some other plugin has a reference to its symbol.
+
+ * Encountered this situation with tao/pegtl library and libolc.so.
+ */
+#include <memory>
+void dummy() 
+{
+    struct dummy {} d;
+    std::make_shared<dummy>(d);
 }
 

@@ -33,7 +33,7 @@ bool Skill::isValid( ) const
 }
 const DLString& Skill::getNameFor( Character *ch ) const
 {
-    if (ch->getConfig( )->ruskills)
+    if (ch && ch->getConfig( ).ruskills)
         return getRussianName( );
     else
         return getName( );
@@ -126,7 +126,7 @@ bool Skill::canTeach( NPCharacter *, PCharacter *, bool )
 void Skill::practice( PCharacter * ) const
 {
 }
-void Skill::show( PCharacter *, std::ostream & ) 
+void Skill::show( PCharacter *, std::ostream & ) const
 { 
 }
 

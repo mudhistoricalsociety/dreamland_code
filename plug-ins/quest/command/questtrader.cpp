@@ -132,7 +132,7 @@ void QuestTrader::msgBuyRequest( Character *client )
  *---------------------------------------------------------------------------*/
 void QuestTradeArticle::toStream( Character *client, ostringstream &buf ) const
 {
-    DLString myname = client->getConfig()->rucommands && !rname.empty() ? rname : name;
+    DLString myname = client->getConfig().rucommands && !rname.empty() ? rname : name;
     buf << "    " << setiosflags( ios::right ) << setw( 7 );
     
     price->toStream( client, buf );
@@ -164,15 +164,19 @@ int QuestTradeArticle::getQuantity( ) const
     return 1;
 }
 
-void QuestTradeArticle::purchase( Character *client, NPCharacter *questman, const DLString &, int )
+bool QuestTradeArticle::purchase( Character *client, NPCharacter *questman, const DLString &, int )
 {
-    if (!price->canAfford( client ))
+    if (!price->canAfford( client )) {
         say_act( client, questman, "Извини, $c1, но у тебя недостаточно $n2 для этого.",
                  price->toCurrency( ).c_str( ) );
-    else if (!client->is_npc( )) {
+        return false;
+    } else if (!client->is_npc( )) {
         price->deduct( client );
         buy( client->getPC( ), questman );
+        return true;
     }
+
+    return false;
 }
 
 /*----------------------------------------------------------------------------
@@ -383,7 +387,7 @@ void KeyringQuestArticle::buy( PCharacter *client, NPCharacter *questman )
     keyring->condition = girth->condition;
     keyring->level = girth->level;
 
-    for (Affect *paf = girth->affected; paf != 0; paf = paf->next)
+    for (auto &paf: girth->affected)
         affect_to_obj( keyring, paf );
 
     for (EXTRA_DESCR_DATA *ed = girth->extra_descr; ed != 0; ed = ed->next)

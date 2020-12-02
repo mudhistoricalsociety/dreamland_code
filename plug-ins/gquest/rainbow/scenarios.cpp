@@ -28,7 +28,7 @@
  * Rainbow Scenario
  *-------------------------------------------------------------------------*/
 
-bool RainbowScenario::checkArea( AREA_DATA *area ) const
+bool RainbowScenario::checkArea( AreaIndexData *area ) const
 {
     if (IS_SET(area->area_flag, AREA_WIZLOCK|AREA_NOQUEST|AREA_HOMETOWN|AREA_NOGATE))
         return false;
@@ -51,6 +51,8 @@ bool RainbowScenario::checkMobile( NPCharacter *ch ) const
     if (IS_CHARMED(ch)) 
         return false;
     if (IS_SET(ch->act, ACT_AGGRESSIVE))
+        return false;
+    if (IS_AFFECTED(ch, AFF_BLIND))
         return false;
 
     return true;
@@ -144,15 +146,15 @@ void RainbowDefaultScenario::onQuestFinish( PCharacter *ch ) const
 {
     Affect af;
 
-    af.where = TO_RESIST;
+    af.bitvector.setTable(&res_flags);
     af.type = SkillManager::getThis( )->lookup( "rainbow shield" );
     af.duration = 180;
     af.level = 106;
-    af.bitvector = RES_SUMMON|RES_CHARM|RES_SPELL|RES_WEAPON|RES_BASH
+    af.bitvector.setValue(RES_SUMMON|RES_CHARM|RES_SPELL|RES_WEAPON|RES_BASH
                    |RES_PIERCE|RES_SLASH|RES_FIRE|RES_COLD|RES_LIGHTNING
                    |RES_ACID|RES_NEGATIVE|RES_HOLY|RES_ENERGY|RES_MENTAL
-                   |RES_LIGHT|RES_WOOD|RES_SILVER|RES_IRON|RES_MITHRIL;
-    af.location = 0;
+                   |RES_LIGHT|RES_WOOD|RES_SILVER|RES_IRON|RES_MITHRIL);
+    
     af.modifier = 0;
     affect_join(ch, &af);
     
@@ -212,7 +214,7 @@ void RainbowSinsScenario::printTime( ostringstream& buf ) const
 void RainbowSinsScenario::printWinnerMsgOther( const DLString &name, ostringstream& buf ) const 
 {
     buf << GQChannel::BOLD << name << GQChannel::NORMAL
-        << "  приняли на адскую должность!";
+        << " приняли на адскую должность!";
 }
 
 bool RainbowSinsScenario::canHearInitMsg( PCharacter *ch ) const
@@ -224,15 +226,15 @@ void RainbowSinsScenario::onQuestFinish( PCharacter *ch ) const
 {
     Affect af;
 
-    af.where = TO_RESIST;
+    af.bitvector.setTable(&res_flags);
     af.type = SkillManager::getThis( )->lookup( "demonic mantle" );
     af.duration = 180;
     af.level = 106;
-    af.bitvector = RES_SUMMON|RES_CHARM|RES_SPELL|RES_WEAPON|RES_BASH
+    af.bitvector.setValue(RES_SUMMON|RES_CHARM|RES_SPELL|RES_WEAPON|RES_BASH
                    |RES_PIERCE|RES_SLASH|RES_FIRE|RES_COLD|RES_LIGHTNING
                    |RES_ACID|RES_NEGATIVE|RES_HOLY|RES_ENERGY|RES_MENTAL
-                   |RES_LIGHT|RES_WOOD|RES_SILVER|RES_IRON|RES_MITHRIL;
-    af.location = 0;
+                   |RES_LIGHT|RES_WOOD|RES_SILVER|RES_IRON|RES_MITHRIL);
+    
     af.modifier = 0;
     affect_join(ch, &af);
    

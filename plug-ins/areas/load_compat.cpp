@@ -56,7 +56,6 @@ LIQ(water);
 
 FILE *                        fpArea;
 char                        strArea[MAX_INPUT_LENGTH];
-AREA_DATA                *Serarea;        /* currently read area */
 
 RESET_DATA               *reset_first = 0;
 RESET_DATA               *reset_last = 0;
@@ -81,7 +80,7 @@ void        fix_resets( void );
 void        fix_door_levels( bool );
 
 bool 
-__lowrangecmp__(AREA_DATA *l, AREA_DATA *r)
+__lowrangecmp__(AreaIndexData *l, AreaIndexData *r)
 {
     return l->min_vnum < r->min_vnum;
 }
@@ -89,13 +88,12 @@ __lowrangecmp__(AREA_DATA *l, AREA_DATA *r)
 void
 vnumck()
 {
-    AREA_DATA *area;
-    typedef list<AREA_DATA *> alist;
+    typedef list<AreaIndexData *> alist;
     alist areas;
     
     LogStream::sendNotice() << "Checking vnum ranges..." << endl;
 
-    for(area = area_first; area; area = area->next)
+    for(auto &area: areaIndexes)
         areas.push_back(area);
 
     areas.sort( ptr_fun(__lowrangecmp__) );
@@ -103,7 +101,7 @@ vnumck()
     for(alist::iterator i = areas.begin();i != areas.end();) {
         MOB_INDEX_DATA *mob;
         OBJ_INDEX_DATA *obj;
-        Room *room;
+        RoomIndexData *room;
         char *aname = (*i)->name;
         int l = (*i)->min_vnum, h = (*i)->max_vnum, hashi;
         int minused = 0xFFFFL, maxused = 0;
@@ -112,21 +110,21 @@ vnumck()
             throw FileFormatException(
                 "%s: min vnum is higher then max.", aname);
         
-        for(hashi = 0;hashi < MAX_KEY_HASH;hashi++)
-            for(room = room_index_hash[hashi]; room; room = room->next) {
-                if(room->area != *i)
-                    continue;
-                
-                if(room->vnum < l || room->vnum > h)
-                    throw FileFormatException(
-                            "%s: room %d out of allocated range.", 
-                            aname, room->vnum);
-                
-                if(minused > room->vnum)
-                    minused = room->vnum;
-                if(maxused < room->vnum)
-                    maxused = room->vnum;
-            }
+        for (auto &r: roomIndexMap) {
+            room = r.second;
+            if(room->areaIndex != *i)
+                continue;
+            
+            if(room->vnum < l || room->vnum > h)
+                throw FileFormatException(
+                        "%s: room %d out of allocated range.", 
+                        aname, room->vnum);
+            
+            if(minused > room->vnum)
+                minused = room->vnum;
+            if(maxused < room->vnum)
+                maxused = room->vnum;
+        }
         
         for(hashi = 0;hashi < MAX_KEY_HASH;hashi++)
             for(mob = mob_index_hash[hashi]; mob; mob = mob->next) {
@@ -176,7 +174,7 @@ vnumck()
     }
 }
 
-void load_area_header(FILE *fp, AREA_DATA *pArea)
+void load_area_header(FILE *fp, AreaIndexData *pArea)
 {
 #ifdef KEY
 #undef KEY
@@ -267,27 +265,15 @@ void load_area_header(FILE *fp, AREA_DATA *pArea)
 
 void new_load_area( FILE *fp )
 {
-    AREA_DATA *pArea;
+    AreaIndexData *pArea;
     
-    pArea                = new AREA_DATA;
-    pArea->age                = 15;
-    pArea->nplayer        = 0;
-    pArea->empty        = false;
-    pArea->count        = 0;
-    pArea->resetmsg        = 0;
-    pArea->area_flag        = 0;
+    pArea                = new AreaIndexData;
     pArea->authors      = str_dup("");
     pArea->altname      = str_dup("");
     pArea->name         = str_dup("");
     pArea->credits      = str_dup("");
     pArea->translator   = str_dup("");
     pArea->speedwalk    = str_dup("");
-    pArea->security        = 9;
-    pArea->min_vnum        = 0;
-    pArea->max_vnum        = 0;
-    pArea->low_range    = 0;
-    pArea->high_range   = 0;
-    pArea->behavior.clear( );
 
     load_area_header(fp, pArea);
 
@@ -295,18 +281,12 @@ void new_load_area( FILE *fp )
     area_file_list->area= pArea;
     pArea->vnum                = top_area;
 
-    if ( area_first == 0 )
-        area_first = pArea;
-    
-    if ( area_last  != 0 )
-        area_last->next = pArea;
-    
-    area_last        = pArea;
-    pArea->next        = 0;
-    Serarea = pArea;
+    areaIndexes.push_back(pArea);
 
     top_area++;
-    
+
+    // Create new single area instance for this index (FIXME)
+    pArea->create();
 
     return;
 }
@@ -334,7 +314,7 @@ void load_helps( FILE *fp )
 
 
 void
-new_reset(Room *pR, RESET_DATA *pReset)
+new_reset(RoomIndexData *pR, RESET_DATA *pReset)
 {
     if(!pR)
         return;
@@ -361,7 +341,7 @@ void load_resets( FILE *fp ) {
     DLString a;
     int wear_loc;
 
-    if ( area_last == 0 )
+    if (areaIndexes.empty())
     {
         throw FileFormatException( "Load_resets: no #AREA seen yet in %s", strArea );
     }
@@ -406,6 +386,9 @@ void load_resets( FILE *fp ) {
             
             pReset->arg3 = wear_loc;
             break;
+        case 'R':
+            warn("...Random reset not supported: %c %d %d", letter, pReset->arg1, pReset->arg2);
+            break;
         default:
             pReset->arg3 = fread_number( fp );
             break;
@@ -449,7 +432,7 @@ void fix_resets()
 
     for (pReset = reset_first; pReset; pReset = pReset_next)
     {
-        Room *pRoomIndex;
+        RoomIndexData *pRoomIndex;
         EXIT_DATA *pexit;
         OBJ_INDEX_DATA *temp_index;
 
@@ -520,7 +503,7 @@ void fix_resets()
             pRoomIndex = get_room_index( pReset->arg1 );
 
             if ( pReset->arg2 == DIR_SOMEWHERE ) {
-                if ( pRoomIndex->extra_exit == 0 ) {
+                if ( pRoomIndex->extra_exits.empty() ) {
                     bad_reset( "Load_resets: 'D': room %d does not contain extra exits", pReset->arg1 );
                     break;
                 }
@@ -571,8 +554,10 @@ void fix_resets()
         }
     }
 
-    for (Room *room = room_list; room; room = room->rnext) 
-        for(pReset = room->reset_first;pReset;pReset = pReset->next) 
+    for (auto &r: roomIndexMap) {
+        RoomIndexData *pRoom = r.second;
+
+        for(pReset = pRoom->reset_first;pReset;pReset = pReset->next) 
             switch (pReset->command) {
             case 'G': case 'O':
             case 'E': case 'P':
@@ -583,6 +568,7 @@ void fix_resets()
                 get_obj_index( pReset->arg1 )->reset_num++;
                 break;
             }
+    }
 }
 
 
@@ -591,9 +577,9 @@ void fix_resets()
  */
 void load_rooms( FILE *fp )
 {
-    Room *pRoomIndex;
+    RoomIndexData *pRoomIndex;
 
-    if ( area_last == 0 )
+    if (areaIndexes.empty())
     {
         throw FileFormatException( "Load_resets: no #AREA seen yet in %s.", strArea );
     }
@@ -603,7 +589,6 @@ void load_rooms( FILE *fp )
         int vnum;
         char letter;
         int door;
-        int iHash;
 
         letter        = fread_letter( fp );
         if ( letter != '#' )
@@ -618,21 +603,13 @@ void load_rooms( FILE *fp )
         if (dup_room_vnum( vnum ))
             throw FileFormatException( "Load_rooms: vnum %d duplicated in %s", vnum, strArea );
         
-        pRoomIndex = new Room;
-        pRoomIndex->rnext        = 0;
-        pRoomIndex->reset_first        = 0;
-        pRoomIndex->reset_last        = 0;
-        pRoomIndex->owner        = str_dup("");
-        pRoomIndex->people        = 0;
-        pRoomIndex->contents        = 0;
-        pRoomIndex->extra_descr        = 0;
-        pRoomIndex->area        = area_last;
+        pRoomIndex = new RoomIndexData;
+        pRoomIndex->areaIndex   = areaIndexes.back();
         pRoomIndex->vnum        = vnum;
         pRoomIndex->name        = fread_string( fp );
         pRoomIndex->description        = fread_string( fp );
         /* Area number */           fread_number( fp );
         pRoomIndex->room_flags        = fread_flag( fp );
-        pRoomIndex->wrapper = 0;
 
         if ( 3000 <= vnum && vnum < 3400 )
             SET_BIT(pRoomIndex->room_flags,ROOM_LAW);
@@ -643,19 +620,6 @@ void load_rooms( FILE *fp )
         {
             pRoomIndex->sector_type = 0;
         }
-
-        pRoomIndex->light                = 0;
-        for ( door = 0; door <= 5; door++ )
-            pRoomIndex->exit[door] = 0;
-
-        pRoomIndex->extra_exit = 0;
-
-        /* defaults */
-        pRoomIndex->heal_rate = 100;
-        pRoomIndex->mana_rate = 100;
-        pRoomIndex->affected = 0;
-        pRoomIndex->affected_by = 0;
-        pRoomIndex->aff_next = 0;
 
         for ( ; ; )
         {
@@ -729,7 +693,6 @@ void load_rooms( FILE *fp )
                                 pexit->keyword = str_dup("дверь");
 
                             pRoomIndex->exit[door]= pexit;
-                            pRoomIndex->old_exit[door]= pexit;
                             break;
 
                         case 6:
@@ -749,9 +712,7 @@ void load_rooms( FILE *fp )
                             peexit->moving_to = fread_number( fp );
                             peexit->moving_mode_to = fread_number( fp );
                             
-                            
-                            peexit->next = pRoomIndex->extra_exit;
-                            pRoomIndex->extra_exit= peexit;
+                            pRoomIndex->extra_exits.push_front(peexit);
                             break;
                     }
 
@@ -797,26 +758,17 @@ void load_rooms( FILE *fp )
             }
         }
 
-        pRoomIndex->mana_rate_default = pRoomIndex->mana_rate;
-        pRoomIndex->heal_rate_default = pRoomIndex->heal_rate;
-        pRoomIndex->room_flags_default = pRoomIndex->room_flags;
-        
-        if (IS_WATER(pRoomIndex) && pRoomIndex->liquid == liq_none)
+        if ((pRoomIndex->sector_type == SECT_WATER_NOSWIM || pRoomIndex->sector_type == SECT_WATER_SWIM) 
+                && pRoomIndex->liquid == liq_none)
             pRoomIndex->liquid = liq_water;
 
-        iHash                        = vnum % MAX_KEY_HASH;
-        pRoomIndex->next        = room_index_hash[iHash];
-        room_index_hash[iHash]        = pRoomIndex;
-        top_room++;
         top_vnum_room = top_vnum_room < vnum ? vnum : top_vnum_room;    /* OLC */
 
-        pRoomIndex->rnext = room_list;
-        room_list = pRoomIndex;
+        roomIndexMap[vnum] = pRoomIndex;
+        pRoomIndex->areaIndex->roomIndexes[vnum] = pRoomIndex;
 
-        pRoomIndex->area->rooms[vnum] = pRoomIndex;
-
-        if (FeniaManager::wrapperManager)
-            FeniaManager::wrapperManager->linkWrapper( pRoomIndex );
+        // Create new single room instance for this index (FIXME)
+        pRoomIndex->create();
     }
 
     return;
@@ -921,89 +873,75 @@ void load_specials( FILE *fp )
  */
 void fix_exits( bool verbose )
 {
-        Room *pRoomIndex;
         Room *to_room = 0;
         EXIT_DATA *pexit;
         EXIT_DATA *pexit_rev = 0;
-        EXTRA_EXIT_DATA *peexit;
-        int iHash;
         int door;
         static const int rev_dir [] = { 2, 3, 0, 1, 5, 4 };
 
         LogStream::sendNotice( ) << "Fixing exits..." << endl;
 
-        for ( iHash = 0; iHash < MAX_KEY_HASH; iHash++ )
-        {
-                for ( pRoomIndex  = room_index_hash[iHash];
-                                        pRoomIndex != 0;
-                                        pRoomIndex  = pRoomIndex->next )
-                {
-                        bool fexit;
+        for (auto &r: roomIndexMap) {
+            bool fexit;
 
-                        fexit = false;
+            fexit = false;
+            RoomIndexData *pRoomIndex = r.second;
+            Room *room = pRoomIndex->room; // FIXME all instances will be linked
 
-                        for ( door = 0; door <= 5; door++ )
-                        {
-                                if ( ( pexit = pRoomIndex->exit[door] ) != 0 )
-                                {
-                                        if ( pexit->u1.vnum <= 0
-                                                || get_room_index(pexit->u1.vnum) == 0 )
-                                        {
-                                                pexit->u1.to_room = 0;
-                                        }
-                                        else
-                                        {
-                                                fexit = true;
-                                                pexit->u1.to_room = get_room_index( pexit->u1.vnum );
-                                        }
-                                }
-                        }
+            for ( door = 0; door < DIR_SOMEWHERE; door++ )
+            {
+                    if ( ( pexit = room->exit[door] ) != 0 )
+                    {
+                            if ( pexit->u1.vnum <= 0
+                                    || get_room_instance(pexit->u1.vnum) == 0 )
+                            {
+                                    pexit->u1.to_room = 0;
+                            }
+                            else
+                            {
+                                    fexit = true;
+                                    pexit->resolve();
+                            }
+                    }
+            }
 
-                        peexit = pRoomIndex->extra_exit;
-                        while ( peexit )
-                        {
-                                if ( peexit->u1.vnum <= 0
-                                        || get_room_index(peexit->u1.vnum) == 0 )
-                                {
-                                        peexit->u1.to_room = 0;
-                                }
-                                else
-                                {
-                                        fexit = true;
-                                        peexit->u1.to_room = get_room_index( peexit->u1.vnum );
-                                }
+            for (auto &peexit: room->extra_exits)
+            {
+                    if ( peexit->u1.vnum <= 0
+                            || get_room_instance(peexit->u1.vnum) == 0 )
+                    {
+                            peexit->u1.to_room = 0;
+                    }
+                    else
+                    {
+                            fexit = true;
+                            peexit->resolve();
+                    }
+            }
 
-                                peexit = peexit->next;
-                        }
-
-                        if ( !fexit )
-                                SET_BIT(pRoomIndex->room_flags,ROOM_NO_MOB);
-                
-                }
+            if ( !fexit )
+                    SET_BIT(room->room_flags,ROOM_NO_MOB);
         }
 
-        for ( iHash = 0; iHash < MAX_KEY_HASH; iHash++ )
-        {
-                for ( pRoomIndex  = room_index_hash[iHash];
-                                        pRoomIndex != 0;
-                                        pRoomIndex  = pRoomIndex->next )
-                {
-                        for ( door = 0; door <= 5; door++ )
-                        {
-                                if ( ( pexit     = pRoomIndex->exit[door]       ) != 0
-                                        && ( to_room   = pexit->u1.to_room            ) != 0
-                                        && ( pexit_rev = to_room->exit[rev_dir[door]] ) != 0
-                                        && pexit_rev->u1.to_room != pRoomIndex
-                                        && ( pRoomIndex->vnum < 1200 || pRoomIndex->vnum > 1299 ))
-                                {
-                                    if (verbose)
-                                        LogStream::sendWarning( ) << "Fix_exits: " << pRoomIndex->vnum << ':'
-                                                << door << " -> " << to_room->vnum << ':' << rev_dir[door] << " -> "
-                                                << ( pexit_rev->u1.to_room == 0 ? 0 : pexit_rev->u1.to_room->vnum )
-                                                << '.' << endl;
-                                }
-                        }
-                }
+        for (auto &r: roomIndexMap) {
+            RoomIndexData *pRoomIndex = r.second;
+            Room *room = pRoomIndex->room;
+
+            for ( door = 0; door <= 5; door++ )
+            {
+                    if ( ( pexit     = room->exit[door]       ) != 0
+                            && ( to_room   = pexit->u1.to_room            ) != 0
+                            && ( pexit_rev = to_room->exit[rev_dir[door]] ) != 0
+                            && pexit_rev->u1.to_room != room
+                            && ( room->vnum < 1200 || room->vnum > 1299 ))
+                    {
+                        if (verbose)
+                            LogStream::sendWarning( ) << "Fix_exits: " << room->vnum << ':'
+                                    << door << " -> " << to_room->vnum << ':' << rev_dir[door] << " -> "
+                                    << ( pexit_rev->u1.to_room == 0 ? 0 : pexit_rev->u1.to_room->vnum )
+                                    << '.' << endl;
+                    }
+            }
         }
 
         return;
@@ -1075,32 +1013,30 @@ void load_olimits(FILE *fp)
 
 void load_resetmsg( FILE *fp )
 {
-    Serarea->resetmsg        = fread_string(fp);
-    
-    return;
+    areaIndexes.back()->resetmsg = fread_string(fp);
 }
 
 void load_aflag( FILE *fp )
 {
-    Serarea->area_flag        = fread_flag(fp);
-    
-    return;
+    areaIndexes.back()->area_flag = fread_flag(fp);
 }
 
 
 /*--------------------------------------------------------------------------
  * assigning levels for locked passable doors
  *-------------------------------------------------------------------------*/
-static int get_obj_reset_level( AREA_DATA *pArea, int keyVnum )
+static int get_obj_reset_level( AreaIndexData *pArea, int keyVnum )
 {
     int mobVnum = -1;
     int level = 200;
     
     if (keyVnum <= 0 || !get_obj_index( keyVnum ))
         return pArea->low_range;
+
+    for (auto &r: roomIndexMap) {
+        RoomIndexData *pRoomIndex  = r.second;
         
-    for (Room *room = room_list; room; room = room->rnext) 
-        for(RESET_DATA *pReset = room->reset_first;pReset;pReset = pReset->next)
+        for(RESET_DATA *pReset = pRoomIndex->reset_first;pReset;pReset = pReset->next)
             switch(pReset->command) {
                 case 'M':
                     mobVnum = pReset->arg1;
@@ -1121,7 +1057,7 @@ static int get_obj_reset_level( AREA_DATA *pArea, int keyVnum )
                         if (in->item_type == ITEM_CONTAINER
                             && IS_SET(in->value[1], CONT_LOCKED))
                         {
-                            level = min( get_obj_reset_level( room->area, in->value[2] ), 
+                            level = min( get_obj_reset_level( pRoomIndex->areaIndex, in->value[2] ), 
                                          level );
                         }
                         else
@@ -1129,6 +1065,7 @@ static int get_obj_reset_level( AREA_DATA *pArea, int keyVnum )
                     }
                     break;
             }
+    }
     
     return (level == 200 ? pArea->low_range : level);
 }            
@@ -1137,7 +1074,7 @@ void fix_door_levels( bool verbose )
 {
     LogStream::sendNotice( ) << "Assigning door levels..." << endl;
 
-    for (Room *r = room_list; r; r = r->rnext) {
+    for (auto &r: roomInstances) {
         for (int d = 0; d < DIR_SOMEWHERE; d++) {
             EXIT_DATA *ex = r->exit[d];
 
@@ -1148,25 +1085,25 @@ void fix_door_levels( bool verbose )
             if (IS_SET(ex->exit_info_default, EX_NOPASS))
                 continue;
             
-            ex->level = get_obj_reset_level( r->area, ex->key );
+            ex->level = get_obj_reset_level( r->area->pIndexData, ex->key );
             
             if (verbose)
                 LogStream::sendNotice( )
-                    << "[" << r->vnum << "] " << r->name << " " << d << ": "
+                    << "[" << r->vnum << "] " << r->getName() << " " << d << ": "
                     << "level " <<  ex->level << endl;
         }
 
-        for (EXTRA_EXIT_DATA *ex = r->extra_exit; ex; ex = ex->next) {
+        for (auto &ex: r->extra_exits) {
             if (!IS_SET(ex->exit_info_default, EX_CLOSED))
                 continue;
             if (IS_SET(ex->exit_info_default, EX_NOPASS))
                 continue;
             
-            ex->level = get_obj_reset_level( r->area, ex->key );
+            ex->level = get_obj_reset_level( r->area->pIndexData, ex->key );
 
             if (verbose)
                 LogStream::sendNotice( )
-                    << "[" << r->vnum << "] " << r->name << " extra: "
+                    << "[" << r->vnum << "] " << r->getName() << " extra: "
                     << "level " <<  ex->level << endl;
         }
     }
@@ -1225,6 +1162,7 @@ load_areas( )
                         }
 
                         word = fread_word( fpArea );
+                        notice("...loading section %s", word);
 
                         if (word[0] == '$')  
                             break;
@@ -1242,12 +1180,10 @@ load_areas( )
                         else if ( !str_cmp( word, "FLAG" ) )         load_aflag(fpArea);
                         else
                         {
-                                LogStream::sendError( ) << "Boot_db: bad section name." << endl;
+                                LogStream::sendError( ) << "Boot_db: bad section name " << word << endl;
                                 fread_letter( fpArea );
                         }
                 }
-
-                Serarea = 0;
 
                 fpArea = 0;
         }
@@ -1266,8 +1202,6 @@ fix_areas( )
         fix_door_levels( false );
 
         vnumck( );
-
-        RoomBehaviorManager::setAll( );
 }
 
 class AreaLoadTask : public SchedulerTaskRoundPlugin {
@@ -1334,12 +1268,6 @@ bool dup_obj_vnum( int vnum )
 
 bool dup_room_vnum( int vnum )
 {
-    Room *pRoom;
-
-    for (pRoom = room_index_hash[vnum % MAX_KEY_HASH]; pRoom; pRoom = pRoom->next)
-        if ( pRoom->vnum == vnum )
-            return true;
-
-    return false;
+    return roomIndexMap.find(vnum) != roomIndexMap.end();
 }
 

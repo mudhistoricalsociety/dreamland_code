@@ -63,12 +63,10 @@ void follower_add( Character *ch, Character *mch )
 
 static void afprog_stopfol( Character *ch )
 {
-    Affect *paf, *paf_next;
-
-    for (paf = ch->affected; paf; paf = paf_next) {
-        paf_next = paf->next;
-
-        if (paf->type->getAffect( ))
+    AffectList affects = ch->affected.clone();
+    for (auto paf_iter = affects.cbegin(); paf_iter != affects.cend(); paf_iter++) {
+        Affect *paf = *paf_iter;
+        if (!affects.hasNext(paf_iter) && paf->type->getAffect( ))
             paf->type->getAffect( )->stopfol( ch, paf );
     }
 }
@@ -81,6 +79,7 @@ static bool mprog_stopfol( Character *ch, Character *master )
     return false;
 }
 
+
 void follower_stop( Character *ch )
 {
     Character *master = ch->master;
@@ -88,10 +87,23 @@ void follower_stop( Character *ch )
     if (master == NULL)
         return;
 
-    if (IS_CHARMED(ch)) { /* XXX causes double affect_strip */
+    if (IS_CHARMED(ch)) {
         REMOVE_BIT( ch->affected_by, AFF_CHARM );
-        affect_strip( ch, gsn_charm_person );
     }
+
+    if (ch->isAffected(gsn_charm_person)) {
+        affect_strip( ch, gsn_charm_person );
+    } 
+    
+    follower_clear(ch);
+}
+
+void follower_clear( Character * ch )
+{
+    Character *master = ch->master;
+
+    if (master == NULL)
+        return;
 
     if (master->can_see( ch )) 
        act( "$c1 теперь не следует за тобой.", ch, 0, master, TO_VICT );

@@ -234,11 +234,21 @@ CMDADM( codesource )
             return;
 
         CodeSource &cs = CodeSource::manager->at(csid);               
-        DLString filecontent = cs.content;
-        DLDirectory dir( dreamland->getTableDir( ), "fenia.local" );
-        DLFileStream( dir, cs.name, ".f++" ).fromString( filecontent );
-        ch->printf("Codesource %d is saved as  %s/%s.f++.\r\n",  
-                     cs.getId(), dir.getAbsolutePath().c_str(), cs.name.c_str());
+        if (cs.name.empty()) {
+            ch->println("This codesource has no subject, cannot save.");
+            return;
+        }
+
+        DLString filecontent = cs.content;    
+        try {
+            DLDirectory dir( dreamland->getTableDir( ), "fenia.local" );
+            DLFileStream( dir, cs.name, ".f++" ).fromString( filecontent );
+            ch->printf("Codesource %d is saved as  %s/%s.f++.\r\n",  
+                        cs.getId(), dir.getAbsolutePath().c_str(), cs.name.c_str());
+        } catch (const ::Exception &ex) {
+            ch->printf("Error saving codesource: %s\r\n", ex.what());
+        }
+
         return;
     }
 
@@ -471,7 +481,7 @@ CMDADM( codesource )
         try {
             cs.eval( thiz );
             ch->send_to("Ok.\r\n");
-        } catch( ::Exception e ) {
+        } catch(const ::Exception& e ) {
             ostringstream ostr;
             ostr << "Evaluation exception: " << e.what() << endl;
             ch->send_to(ostr);

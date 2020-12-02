@@ -38,7 +38,7 @@ CLAN(none);
 ClanArea::Pointer ClanMobile::getClanArea( )
 {
     ClanArea::Pointer clanArea;
-    AREA_DATA *area;
+    AreaIndexData *area;
 
     area = getChar( )->pIndexData->area;
 
@@ -281,14 +281,14 @@ bool ClanGuard::checkPush( PCharacter* wch )
     Room * location;
 
     if (!IS_SET(wch->act, PLR_CONFIRMED)
-        || (wch->getClan( ) == clan_none && wch->getRealLevel( ) <= 30)
+        || (wch->getClan( ) == clan_none && wch->getRealLevel( ) <= 80)
         || (wch->getClan( ) != clan_none && wch->getClan( ) != ch->getClan( ) && wch->getRealLevel( ) <= 15)
         || (wch->getClan( ) != ch->getClan( ) && !dreamland->hasOption( DL_PK )))
     {
         actPush( wch );
 
-        if (!( location = get_room_index( wch->getHometown( )->getRecall( ) ) )) 
-            location = get_room_index( 1 ); // В limbo потвор
+        if (!( location = get_room_instance( wch->getHometown( )->getRecall( ) ) )) 
+            location = get_room_instance( 1 ); // В limbo потвор
         
         transfer_char( wch, ch, location,
                        NULL, NULL, "%1$^C1 внезапно появляется." );

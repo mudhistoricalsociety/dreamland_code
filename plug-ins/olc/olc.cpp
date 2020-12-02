@@ -2,6 +2,7 @@
  *
  * ruffina, 2004
  */
+#include <algorithm>
 #include "grammar_entities_impl.h"
 #include "dlfilestream.h"
 #include "regexp.h"
@@ -20,11 +21,14 @@
 #include <affect.h>
 #include <object.h>
 #include <pcharacter.h>
+#include "pcharactermanager.h"
 #include <npcharacter.h>
 #include <commandmanager.h>
+#include "profession.h"
 #include "race.h"
 #include "clanreference.h"
 #include "room.h"
+#include "summoncreaturespell.h"
 
 #include "olc.h"
 #include "olcflags.h"
@@ -39,6 +43,7 @@
 #include "act.h"
 #include "save.h"
 #include "act_move.h"
+#include "../anatolia/handler.h"
 #include "vnum.h"
 #include "mercdb.h"
 #include "comm.h"
@@ -50,6 +55,7 @@ GSN(enchant_weapon);
 GSN(enchant_armor);
 GSN(none);
 CLAN(none);
+PROF(necromancer);
 
 using namespace std;
 
@@ -60,27 +66,14 @@ enum {
     NDX_MOB,
 };
 
-/** Get self-help article for this area, either a real one or automatically created. */
-AreaHelp * get_area_help(AREA_DATA *area)
+static int next_index_data( Character *ch, RoomIndexData *r, int ndx_type )
 {
-    for (auto &article: area->helps) {
-        AreaHelp *ahelp = article.getDynamicPointer<AreaHelp>();
-        if (ahelp && ahelp->selfHelp)
-            return ahelp;
-    }
-
-    return 0;
-}
-
-
-static int next_index_data( Character *ch, Room *r, int ndx_type )
-{
-    AREA_DATA *pArea;
+    AreaIndexData *pArea;
     
     if (!r)
         return -1;
 
-    pArea = r->area;
+    pArea = r->areaIndex;
     if (!pArea)
         return -1;
 
@@ -107,17 +100,17 @@ static int next_index_data( Character *ch, Room *r, int ndx_type )
     return -1;
 }
     
-int next_room( Character *ch, Room *r )
+int next_room( Character *ch, RoomIndexData *r )
 {
     return next_index_data( ch, r, NDX_ROOM );
 }
 
-int next_obj_index( Character *ch, Room *r )
+int next_obj_index( Character *ch, RoomIndexData *r )
 {
     return next_index_data( ch, r, NDX_OBJ );
 }
 
-int next_mob_index( Character *ch, Room *r )
+int next_mob_index( Character *ch, RoomIndexData *r )
 {
     return next_index_data( ch, r, NDX_MOB );
 }
@@ -164,11 +157,9 @@ void show_fenia_triggers(Character *ch, Scripting::Object *wrapper)
 }
 
 /** Find area with given vnum. */
-AREA_DATA *get_area_data(int vnum)
+AreaIndexData *get_area_data(int vnum)
 {
-    AREA_DATA *pArea;
-
-    for (pArea = area_first; pArea; pArea = pArea->next) {
+    for(auto &pArea: areaIndexes) {
         if (pArea->vnum == vnum)
             return pArea;
     }
@@ -177,14 +168,14 @@ AREA_DATA *get_area_data(int vnum)
 
 void display_resets(Character * ch)
 {
-    Room *pRoom;
+    RoomIndexData *pRoom;
     RESET_DATA *pReset;
     MOB_INDEX_DATA *pMob = NULL;
     char buf[MAX_STRING_LENGTH];
     char final[MAX_STRING_LENGTH];
     int iReset = 0;
 
-    pRoom = ch->in_room;
+    pRoom = ch->in_room->pIndexData;
 
     final[0] = '\0';
 
@@ -199,7 +190,7 @@ void display_resets(Character * ch)
         MOB_INDEX_DATA *pMobIndex;
         OBJ_INDEX_DATA *pObjIndex;
         OBJ_INDEX_DATA *pObjToIndex;
-        Room *pRoomIndex;
+        RoomIndexData *pRoomIndex;
 
         final[0] = '\0';
         sprintf(final, "[%2d] ", ++iReset);
@@ -368,7 +359,7 @@ CMD(edit, 50, "", POS_DEAD, 103, LOG_ALWAYS,
 //    do_help(ch, "olc");
 }
 
-void add_reset(Room * room, RESET_DATA * pReset, int index)
+void add_reset(RoomIndexData * room, RESET_DATA * pReset, int index)
 {
     RESET_DATA *reset;
     int iReset = 0;
@@ -425,7 +416,7 @@ CMD(resets, 50, "", POS_DEAD, 103, LOG_ALWAYS,
     }
 
     if (arg1[0] == '\0') {
-        if (ch->in_room->reset_first) {
+        if (ch->in_room->pIndexData->reset_first) {
             stc("Resets: M = mobile, R = room, O = object\n\r", ch);
             display_resets(ch);
         }
@@ -434,12 +425,12 @@ CMD(resets, 50, "", POS_DEAD, 103, LOG_ALWAYS,
     }
 
     if (is_number(arg1)) {
-        Room *pRoom = ch->in_room;
+        RoomIndexData *pRoom = ch->in_room->pIndexData;
 
         if (!str_cmp(arg2, "delete")) {
             int insert_loc = atoi(arg1);
 
-            if (!ch->in_room->reset_first) {
+            if (!ch->in_room->pIndexData->reset_first) {
                 stc("No resets in this area.\n\r", ch);
                 return;
             }
@@ -535,7 +526,7 @@ CMD(resets, 50, "", POS_DEAD, 103, LOG_ALWAYS,
                         pReset->command = 'E';
                 }
             }
-            add_reset(ch->in_room, pReset, atoi(arg1));
+            add_reset(ch->in_room->pIndexData, pReset, atoi(arg1));
             SET_BIT(ch->in_room->area->area_flag, AREA_CHANGED);
             stc("Reset added.\n\r", ch);
         }
@@ -549,31 +540,72 @@ CMD(resets, 50, "", POS_DEAD, 103, LOG_ALWAYS,
     }
 }
 
+static bool area_cmp_filename(const AreaIndexData *a, const AreaIndexData *b)
+{
+    return strcmp(a->area_file->file_name, b->area_file->file_name) < 0;
+}
+
+static bool area_cmp_vnum(const AreaIndexData *a, const AreaIndexData *b)
+{
+    return a->min_vnum < b->min_vnum;
+}
+
+static bool area_cmp_name(const AreaIndexData *a, const AreaIndexData *b) 
+{
+    DLString name1 = DLString(a->name).colourStrip();
+    DLString name2 = DLString(b->name).colourStrip();
+    return name1.compareRussian(name2) < 0;
+}
+
 CMD(alist, 50, "", POS_DEAD, 103, LOG_ALWAYS, 
         "List areas.")
 {
-    AREA_DATA *pArea;
+    vector<AreaIndexData *> areas;
+    DLString args(argument);
+    DLString arg = args.getOneArgument();
+
+    for(auto &pArea: areaIndexes) {
+        areas.push_back(pArea);
+    }
+
+    if (arg_has_oneof(arg, "vnum", "внум")) 
+        sort(areas.begin(), areas.end(), area_cmp_vnum);
+    else if (arg_has_oneof(arg, "name", "имя"))
+        sort(areas.begin(), areas.end(), area_cmp_name);
+    else if (arg_has_oneof(arg, "file", "файл"))
+        sort(areas.begin(), areas.end(), area_cmp_filename);
+    else if (!arg.empty()) {
+        ch->println("Формат:\r\nalist - список всех арий\r\nalist vnum|name|file - список арий, отсортированный по критерию");
+        return;
+    }
 
     const DLString lineFormat = 
             "[" + web_cmd(ch, "aedit $1", "%3d") 
-            + "] {W%-29s {x(%5u-%5u) %17s %s{w\n\r";
+            + "] {%s%-29s {%s(%5u-%5u) %17s %s{w\n\r";
 
     ptc(ch, "[%3s] %-29s   (%5s-%5s) %-17s %s\n\r",
       "Num", "Area Name", "lvnum", "uvnum", "Filename", "Help");
 
-    for (pArea = area_first; pArea; pArea = pArea->next) {
+    for (auto &pArea: areas) {
         DLString hedit = "";
-        AreaHelp *ahelp = get_area_help(pArea);
+        AreaHelp *ahelp = area_selfhelp(pArea);
         if (ahelp && ahelp->getID() > 0) {
             DLString id(ahelp->getID());
-	    DLString color = (ahelp->find_first_not_of(' ') != DLString::npos) ? "": " {R*{x";
+            // Mark zones without meaningful help articles with red asterix.
+            DLString color = help_is_empty(*ahelp) ? " {R*{x": "";
             hedit = web_cmd(ch, "hedit " + id, "hedit " + id) + color;
         }
-            
+
+        // System areas are shown in grey colors.           
+        const char *colorAreaName = IS_SET(pArea->area_flag, AREA_SYSTEM) ? "D" : "W";
+        const char *colorAreaVnums = IS_SET(pArea->area_flag, AREA_SYSTEM) ? "D" : "w";
+
         ch->send_to(
             dlprintf(lineFormat.c_str(), 
                 pArea->vnum, 
+                colorAreaName,
                 DLString(pArea->name).colourStrip().cutSize(29).c_str(),
+                colorAreaVnums,
                 pArea->min_vnum, pArea->max_vnum,
                 pArea->area_file->file_name,
                 hedit.c_str()));
@@ -588,94 +620,28 @@ static DLString trim(const DLString& str, const string& chars = "\t\n\v\f\r ")
     return line;
 }
 
+static bool mob_is_changed(NPCharacter *mob) {
+    int vnum = mob->pIndexData->vnum;
+    int dn = mob->damage[DICE_NUMBER];
+    int dt = mob->damage[DICE_TYPE];
 
-static DLString find_word_mention(const char *text, const list<RussianString> &words)
-{
-    DLString t = text;
-    t.colourStrip();
-    t.toLower();
+    if (vnum == 24 && (dn != 13 || dt != 9)) // adamantite golem
+        return true;
+    if (vnum == 23 && (dn != 11 || dt != 5)) // iron golem
+        return true;
+    if (vnum == 21 && (dn != 3 || dt != 10)) // lesser golem
+        return true;
+    if (vnum == 22 && (dn != 8 || dt != 4)) // stone golem
+        return true;
 
-    for (const auto &word: words)
-        for (int c = Grammar::Case::NONE; c < Grammar::Case::MAX; c++) {
-            DLString myword = word.decline(c);
-            if (t.isName(myword))
-                return myword;
-        }
-
-    return DLString::emptyString;
+    return false;    
 }
+
 
 CMD(abc, 50, "", POS_DEAD, 106, LOG_ALWAYS, "")
 {
     DLString args = argument;
     DLString arg = args.getOneArgument();
-
-    if (arg == "water") {
-        ostringstream buf;
-        const DLString lineFormat = "[" + web_cmd(ch, "goto $1", "%5d") + "] {W%-29s{x ({C%s{x)";
-
-        list<RussianString> water, air;
-        water.push_back(RussianString("вод|а|ы|е|у|ой|е"));
-        water.push_back(RussianString("водоем||а|у||ом|е" ));
-        water.push_back(RussianString("водопад||а|у||ом|е" ));
-        water.push_back(RussianString("озер|о|а|у|о|ом|е"));
-        water.push_back(RussianString("болот|о|а|у|о|ом|е"));
-        water.push_back(RussianString("мор|е|я|ю|е|ем|е" ));
-        water.push_back(RussianString("рек|а|и|е|у|ой|е" ));
-        water.push_back(RussianString("причал||а|у||ом|е" ));
-        water.push_back(RussianString("лодк|а|и|е|у|ой|е" ));
-        water.push_back(RussianString("трясин|а|ы|е|у|ой|е" ));
-        water.push_back(RussianString("верф|ь|и|и|ь|ью|и" ));
-        water.push_back(RussianString("набережн|ая|ой|ой|ую|ой|ой"));
-        water.push_back(RussianString("корабл|ь|я|ю|ь|ем|я"));
-
-        air.push_back(RussianString("облак|о|а|у|о|ом|е"));
-        air.push_back(RussianString("облак|а|ов|ам|а|ами|ов"));
-        air.push_back(RussianString("туч|а|и|е|у|ей|е" ));
-        air.push_back(RussianString("туч|и||ам|и|ами|ах" ));
-
-        buf << "Всех неводные комнаты с упоминанием воды, без флагов indoors и near_water:" << endl;
-
-        for (Room *room = room_list; room; room = room->rnext) {
-            if (IS_SET(room->room_flags, ROOM_INDOORS|ROOM_NEAR_WATER|ROOM_MANSION))
-                continue;
-            if (room->sector_type == SECT_UNDERWATER)
-                continue;
-            if (IS_WATER(room))
-                continue;
-
-            if (!room->isCommon() && room->clan == clan_none)
-                continue;
-
-            if (!str_cmp(room->area->area_file->file_name, "galeon.are"))
-                continue;
-
-            DLString myword;
-
-            if (room->sector_type == SECT_AIR)
-                myword = find_word_mention(room->description, air);
-            else
-                myword = find_word_mention(room->description, water);
-
-            if (!myword.empty()) {
-                buf << dlprintf(lineFormat.c_str(), room->vnum, room->name, myword.c_str()) << endl;
-                continue;
-            }
-
-            if (room->sector_type == SECT_AIR)
-                myword = find_word_mention(room->name, air);
-            else
-                myword = find_word_mention(room->name, water);
-
-            if (!myword.empty())
-                buf << dlprintf(lineFormat.c_str(), room->vnum, room->name, myword.c_str()) << endl;
-        }
-
-        
-
-        page_to_char( buf.str( ).c_str( ), ch );
-        return;
-    }
 
     if (arg == "eexit") {
         ostringstream abuf, cbuf, mbuf;
@@ -684,16 +650,17 @@ CMD(abc, 50, "", POS_DEAD, 106, LOG_ALWAYS, "")
         cbuf << endl << "Экстравыходы в кланах:" << endl;
 
         const DLString lineFormat = "[" + web_cmd(ch, "goto $1", "%5d") + "] %-35s{x [{C%s{x]";
-        for (Room *room = room_list; room; room = room->rnext) {
+        for (auto &room: roomInstances) {
             ostringstream *buf;
-            if (IS_SET(room->room_flags, ROOM_MANSION) || !str_prefix("ht", room->area->area_file->file_name))
+            if (IS_SET(room->room_flags, ROOM_MANSION) 
+                    || !str_prefix("ht", room->areaIndex()->area_file->file_name))
                 buf = &mbuf;
-            else if (room->clan != clan_none)
+            else if (room->pIndexData->clan != clan_none)
                 buf = &cbuf;
             else
                 buf = &abuf;
-            for (EXTRA_EXIT_DATA *eexit = room->extra_exit; eexit; eexit = eexit->next) {
-                (*buf) << dlprintf(lineFormat.c_str(), room->vnum, room->name, eexit->keyword) << endl;
+            for (auto &eexit: room->extra_exits) {
+                (*buf) << dlprintf(lineFormat.c_str(), room->vnum, room->getName(), eexit->keyword) << endl;
             }
         }
         
@@ -763,56 +730,6 @@ CMD(abc, 50, "", POS_DEAD, 106, LOG_ALWAYS, "")
         return;
     }
 
-    if (arg == "rlim") {
-        
-        if (args.empty( )) {
-            for (Object *obj = object_list; obj; obj = obj->next) {
-                    if (obj->pIndexData->limit < 0)
-                        continue;
-                    if (obj->in_room == NULL)
-                        continue;
-                    if (obj->pIndexData->area == obj->in_room->area)
-                        continue;
-                    if (obj->timestamp > 0)
-                        continue;
-                    
-                    ch->printf("Found %s [%d] in [%d] %s\r\n", 
-                            obj->getShortDescr('1').c_str( ), obj->pIndexData->vnum,
-                            obj->in_room->vnum, obj->in_room->area->name);
-            }
-
-            return;
-        }
-
-        if (!is_number( args.c_str( )))
-            return;
-
-        Room *r = get_room_index( atoi( args.c_str( ) ) );
-        if (!r) {
-            ch->println("Room vnum not found.");
-            return;
-        }
-
-        for (Object *obj = r->contents; obj; obj = obj->next_content) {
-                if (obj->pIndexData->limit < 0)
-                    continue;
-                if (obj->in_room == NULL)
-                    continue;
-                if (obj->pIndexData->area == obj->in_room->area)
-                    continue;
-                if (obj->timestamp > 0)
-                    continue;
-
-                obj->timestamp = 1531034011;
-                save_items( obj->in_room );
-                ch->printf("Marking %s [%d] in [%d] %s\r\n", 
-                        obj->getShortDescr('1').c_str( ), obj->pIndexData->vnum,
-                            obj->in_room->vnum, obj->in_room->area->name);
-        }
-        ch->println("Done marking limits.");
-        return;
-    }
-
     if (arg == "mobname") {
         int cnt = 0, hcnt = 0, rcnt = 0;
         ostringstream buf, hbuf, rbuf;
@@ -875,26 +792,94 @@ CMD(abc, 50, "", POS_DEAD, 106, LOG_ALWAYS, "")
             return;
         }
 
-        room = get_room_index(vnum);
+        room = get_room_instance(vnum);
         if (!room) {
             ch->printf("Room vnum [%d] not found.\r\n", vnum.getValue());
             return;
         }
         
         ch->printf("Loading room objects for '%s' [%d], check logs for details.\r\n", 
-                    room->name, room->vnum);
+                    room->getName(), room->vnum);
         load_room_objects(room, const_cast<char *>("/tmp"), false);
         return;
     }
 
-    if (arg == "nohelp") {
-	ostringstream buf;
-	for (auto help: helpManager->getArticles())
-		if (help->getID() < 1)
-			buf << help->getAllKeywordsString() << endl;
-	page_to_char(buf.str().c_str(), ch);
-	return;
-    }	    	
+    if (arg == "mobwipe") {
+        Integer count;
+        int killed = 0;
+
+        if (args.empty() || !Integer::tryParse(count, args)) {
+            ch->println("abc mobwipe <max count>");
+            return;
+        }
+
+        Character *wch_next;
+        for (Character *wch = char_list; wch; wch = wch_next) {
+            wch_next = wch->next;
+
+            if (!wch->is_npc() || wch->master || wch->leader)
+                continue;
+
+            NPCharacter *mob = wch->getNPC();
+            if (mob->pIndexData->count < count)
+                continue;
+            if (mob->behavior && mob->behavior.getDynamicPointer<SummonedCreature>())
+                continue;
+            if (mob->behavior && mob->behavior->hasDestiny())
+                continue;
+
+            extract_char(wch);
+            killed++;
+        }
+
+        ch->pecho("Убито %d мобов.", killed);
+        return;
+    }
+
+    if (arg == "golemocide") {
+        ostringstream buf;
+        Integer vnum;
+
+        if (args.empty() || !Integer::tryParse(vnum, args)) {
+            ch->println("abc golemocide <vnum>");
+            return;
+        }
+
+        Character *wch_next;
+        for (Character *wch = char_list; wch; wch = wch_next) {
+            SummonedCreature::Pointer creature;
+            wch_next = wch->next;
+
+            if (wch->master)
+                continue;
+
+            if (wch->is_npc() && wch->getNPC()->pIndexData->vnum == vnum) {
+                if (wch->carrying)
+                    buf << "Ignoring mob in room [" << wch->in_room->vnum << "] with inventory." << endl;
+                else if (mob_is_changed(wch->getNPC()))
+                    buf << "Ignoring upgraded mob in room [" << wch->in_room->vnum << "]" << endl;
+                else if (wch->getNPC()->behavior && (creature = wch->getNPC()->behavior.getDynamicPointer<SummonedCreature>())) {
+                    PCMemoryInterface *owner = PCharacterManager::find(creature->creatorName);
+                    if (!owner) {
+                        buf << "Mob in room [" << wch->in_room->vnum << "] extracted, no owner " << creature->creatorName << endl;
+                        extract_char(wch);
+                        continue;
+                    }
+
+                    if (owner->getProfession() != prof_necromancer) {
+                        buf << "Mob in room [" << wch->in_room->vnum << "] extracted, owner " << owner->getName() << " has remorted." << endl;
+                        extract_char(wch);
+                        continue;
+                    }
+
+                    buf << "Ignoring mob in room [" << wch->in_room->vnum << "] with active owner " << owner->getName() << endl;
+                }
+            }
+        }
+
+        page_to_char(buf.str().c_str(), ch);
+        return;
+    }
 }
 
 

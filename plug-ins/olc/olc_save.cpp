@@ -45,7 +45,7 @@ CMD(asave, 50, "", POS_DEAD, 103, LOG_ALWAYS,
     "Save areas.")
 {
     char arg1[MAX_INPUT_LENGTH];
-    AREA_DATA *pArea;
+    AreaIndexData *pArea;
     int value;
 
     if (!ch) {
@@ -54,10 +54,6 @@ CMD(asave, 50, "", POS_DEAD, 103, LOG_ALWAYS,
         
         for (afile = area_file_list; afile; afile = afile->next) {
             if(afile->area) {
-                if (afile->area && IS_SET(afile->area->area_flag, AREA_SAVELOCK)) {
-                    ptc(ch, "Area %s was not saved! (Locked from saving)\n\r", ch);
-                    continue;
-                }
                 REMOVE_BIT(afile->area->area_flag, AREA_CHANGED);
             }
             save_xmlarea(afile);
@@ -90,10 +86,6 @@ CMD(asave, 50, "", POS_DEAD, 103, LOG_ALWAYS,
             stc("You are not a builder for this area.\n\r", ch);
             return;
         }
-        if (IS_SET(pArea->area_flag, AREA_SAVELOCK)) {
-            ptc(ch, "Area %s was not saved! (Locked from saving)\n\r", ch);
-            return;
-        }
         save_xmlarea_list();
         save_xmlarea(pArea->area_file);
         return;
@@ -107,10 +99,6 @@ CMD(asave, 50, "", POS_DEAD, 103, LOG_ALWAYS,
         for (afile = area_file_list; afile; afile = afile->next) {
             pArea = afile->area;
             if(pArea) {
-                if (IS_SET(pArea->area_flag, AREA_SAVELOCK)) {
-                    ptc(ch, "Area %s was not saved! (Locked from saving)\n\r", ch);
-                    continue;
-                }
                 if (!OLCState::can_edit(ch, pArea))
                     continue;
 
@@ -132,15 +120,11 @@ CMD(asave, 50, "", POS_DEAD, 103, LOG_ALWAYS,
         stc("Saved zones:\n\r", ch);
         sprintf(buf, "None.\n\r");
 
-        for (pArea = area_first; pArea; pArea = pArea->next) {
+        for(auto &pArea: areaIndexes) {
             /* Builder must be assigned this area. */
             if (!OLCState::can_edit(ch, pArea))
                 continue;
 
-            if (IS_SET(pArea->area_flag, AREA_SAVELOCK)) {
-                ptc(ch, "Area %s was not saved! (Locked from saving)\n\r", ch);
-                continue;
-            }
             /* Save changed areas. */
             if (IS_SET(pArea->area_flag, AREA_CHANGED)) {
                 REMOVE_BIT(pArea->area_flag, AREA_CHANGED);
@@ -161,12 +145,8 @@ CMD(asave, 50, "", POS_DEAD, 103, LOG_ALWAYS,
 
     // Save area being edited, if authorized
     if (!str_cmp(arg1, "area")) {
-        pArea = ch->in_room->area;
+        pArea = ch->in_room->areaIndex();
 
-        if (IS_SET(pArea->area_flag, AREA_SAVELOCK)) {
-            ptc(ch, "Area %s was not saved! (Locked from saving)\n\r", ch);
-            return;
-        }
         if (!pArea || !OLCState::can_edit(ch, pArea)) {
             stc("У вас нет прав изменять эту арию.\n\r", ch);
             return;

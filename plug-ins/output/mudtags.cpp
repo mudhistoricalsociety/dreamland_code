@@ -2,8 +2,11 @@
  *
  * ruffina, 2004
  */
+#include <sstream>
+#include "mudtags.h"
 #include "colour.h"
 #include "dl_ctype.h"
+#include "door_utils.h"
 #include "logstream.h"
 #include "descriptor.h"
 #include "websocketrpc.h"
@@ -48,12 +51,12 @@ protected:
 
 ColorTags::ColorTags( const char *text, Character *ch )
 {
-    PlayerConfig::Pointer cfg = ch ? ch->getConfig( ) : PlayerConfig::Pointer( );
+    PlayerConfig cfg = ch ? ch->getConfig( ) : PlayerConfig( );
     this->text = text;
     this->ch = ch;
 
     // Is colour enabled for this player?
-    my_color = ch ? cfg->color : true;
+    my_color = ch ? cfg.color : true;
     // Are we using ANSI escape sequences or HTML tags?
     my_ansi = !is_websock(ch);
     raw = false;
@@ -362,7 +365,9 @@ protected:
 
     void hyper_tag_start( ostringstream & );
     void hyper_tag_end( ostringstream & );
+    bool hyper_tag_work();
     const char *my_hyper_tag;
+    int my_elang;
 
     void html_escape( ostringstream &buf );
     bool need_escape( );
@@ -375,15 +380,17 @@ protected:
 
 VisibilityTags::VisibilityTags( const char *text, Character *ch )
 {
-    PlayerConfig::Pointer cfg = ch ? ch->getConfig( ) : PlayerConfig::Pointer( );
+    PlayerConfig cfg = ch ? ch->getConfig( ) : PlayerConfig( );
     this->text = text;
     this->ch = ch;
 
-    my_clang = (cfg && cfg->rucommands) ? LANG_RUSSIAN : LANG_ENGLISH;
+    my_clang = (cfg.rucommands) ? LANG_RUSSIAN : LANG_ENGLISH;
 
-    my_slang = (cfg && cfg->ruskills) ? LANG_RUSSIAN : LANG_ENGLISH;
+    my_slang = (cfg.ruskills) ? LANG_RUSSIAN : LANG_ENGLISH;
 
-    my_nlang = (cfg && cfg->runames) ? LANG_RUSSIAN : LANG_ENGLISH;
+    my_nlang = (cfg.runames) ? LANG_RUSSIAN : LANG_ENGLISH;
+
+    my_elang = (cfg.ruexits) ? LANG_RUSSIAN : LANG_ENGLISH;
 
     my_sex = ch ? ch->getSex( ) : SEX_MALE;
 
@@ -538,15 +545,15 @@ void VisibilityTags::run( ostringstream &out )
         if (*p != '{') {
             c = *p;
 
-            if (c != '\n' && c != '\r')
-                if (!rlang_tag_work( )
-                     || !clang_tag_work( )
-                     || !nlang_tag_work( )
-                     || !slang_tag_work( )
-                     || !align_tag_work( )
-                     || !sex_tag_work( )
-                     || !time_tag_work( )
-                     || !invis_tag_work( ))
+            if (!rlang_tag_work( )
+                    || !clang_tag_work( )
+                    || !nlang_tag_work( )
+                    || !slang_tag_work( )
+                    || !align_tag_work( )
+                    || !sex_tag_work( )
+                    || !time_tag_work( )
+                    || !hyper_tag_work( )
+                    || !invis_tag_work( ))
             continue;
            
             html_escape( out );
@@ -622,7 +629,7 @@ static DLString collect_number(const char *&p) {
 // {h
 // close hyper link: x
 // supported hyper link types: c (<hc>command</hc>), l (<hl>hyper link</hl>), h (<hh>help article</hh>
-// or <hh id='234'>article</hh>), g (<hg>skill group names</hg>)
+// or <hh id='234'>article</hh>), g (<hg>skill group names</hg>), s (<hs>speedwalk</hs>)
 void VisibilityTags::hyper_tag_start( ostringstream &out )
 {
     DLString id;
@@ -643,6 +650,10 @@ void VisibilityTags::hyper_tag_start( ostringstream &out )
 
     case 'g': 
         my_hyper_tag = "hg";
+        break;
+
+    case 's':
+        my_hyper_tag = "hs";
         break;
 
     default:
@@ -668,6 +679,22 @@ void VisibilityTags::hyper_tag_end( ostringstream &out )
         
         my_hyper_tag = 0;
     }
+}
+
+/** 
+ * Additional behavior for some of the hyper-tags:
+ * - {hs replaces exit names inside speedwalk based on player's ruexits config.
+ *    Works for both web and telnet.
+ */
+bool VisibilityTags::hyper_tag_work()
+{
+    // Inside <hs> tag.
+    if (my_hyper_tag && my_hyper_tag[1] == 's') {
+        if (my_elang == LANG_RUSSIAN)
+            c = door_translate_en_ru(c);
+    }
+
+    return true;
 }
 
 // {L 
@@ -863,47 +890,40 @@ void VisibilityTags::invis_tag_parse( ostringstream &out )
 /*------------------------------------------------------------------------------------
  * utils 
  *------------------------------------------------------------------------------------*/
-void mudtags_convert( const char *text, ostringstream &out, Character *ch )
+void mudtags_convert( const char *text, ostringstream &out, int flags, Character *ch )
 {
-     ostringstream vbuf;
-     VisibilityTags( text, ch ).run( vbuf );
+    DLString result = text;
 
-     DLString vbufStr = vbuf.str( );
-     ColorTags( vbufStr.c_str( ), ch ).run( out );
-}
+    // Convert tags like {I, {L if requested.
+    if (IS_SET(flags, TAGS_CONVERT_VIS)) {
+        ostringstream vbuf;
+        VisibilityTags vtags(text, ch);
 
-void mudtags_convert_nocolor( const char *text, ostringstream &out, Character *ch )
-{
-     ostringstream vbuf;
-     VisibilityTags( text, ch ).run( vbuf );
+        if (IS_SET(flags, TAGS_ENFORCE_WEB)) 
+            vtags.setWeb(true);
+        if (IS_SET(flags, TAGS_ENFORCE_NOWEB)) 
+            vtags.setWeb(false);
 
-     DLString vbufStr = vbuf.str( );    
-     ColorTags ct( vbufStr.c_str( ), ch );
-     ct.setColor( false );
-     ct.run( out );
-}
+        vtags.run(vbuf);
+        result = vbuf.str();
+    }
 
-void mudtags_raw( const char *text, ostringstream &out )
-{
-      ColorTags ct( text );
-      ct.setColor( false );
-      ct.run( out );
-}
+    // Convert colors, either stripping them (NOCOLOR) or replacing with ANSI or HTML tags.
+    if (IS_SET(flags, TAGS_CONVERT_COLOR)) {
+        ColorTags ctags(result.c_str(), ch);
 
-void vistags_convert( const char *text, ostringstream &out, Character *ch )
-{
-    VisibilityTags( text, ch ).run( out );
-}
+        if (IS_SET(flags, TAGS_ENFORCE_WEB)) 
+            ctags.setWeb(true);
+        if (IS_SET(flags, TAGS_ENFORCE_NOWEB)) 
+            ctags.setWeb(false);
+        if (IS_SET(flags, TAGS_ENFORCE_NOCOLOR)) 
+            ctags.setColor(false);
+        if (IS_SET(flags, TAGS_ENFORCE_RAW))
+            ctags.setRaw(true);
 
-void mudtags_convert_web( const char *text, ostringstream &out, Character *ch )
-{
-     ostringstream vbuf;
-     VisibilityTags vtags( text, ch );
-     vtags.setWeb(true);
-     vtags.run( vbuf );
+        ctags.run(out);
 
-     DLString vbufStr = vbuf.str( );
-     ColorTags ctags( vbufStr.c_str( ), ch );
-     ctags.setWeb(true);
-     ctags.run( out );
+    } else {
+        out << result;
+    }
 }

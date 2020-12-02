@@ -17,7 +17,7 @@
 
 #include "dreamland.h"
 #include "interp.h"
-#include "handler.h"
+#include "../anatolia/handler.h"
 #include "merc.h"
 #include "act.h"
 #include "mercdb.h"
@@ -159,6 +159,11 @@ bool BasicMobileBehavior::isLastFought( Character *wch )
     return !wch->is_npc( ) && wch->getName( ) == lastFought.getValue( );
 }
 
+void BasicMobileBehavior::rememberFought(Character *victim)
+{
+    memoryFought.remember(victim);
+}
+
 void BasicMobileBehavior::setLastFought( Character *wch )
 {
     if (!wch->is_npc( )) {
@@ -217,7 +222,7 @@ bool BasicMobileBehavior::backHome( bool fAlways )
             return false;
     }
     
-    home = get_room_index( homeVnum );
+    home = get_room_instance( homeVnum );
 
     if (!home) {
         LogStream::sendError( ) << "Mob " << ch->pIndexData->vnum << " from " << ch->in_room->vnum << ": wrong home " << homeVnum << endl;
@@ -243,7 +248,7 @@ bool BasicMobileBehavior::isHomesick( )
     if (ch->position <= POS_SLEEPING)
         return false;
         
-    if (ch->zone == 0 || ch->in_room->area == ch->zone)
+    if (ch->zone == 0 || ch->in_room->areaIndex() == ch->zone)
         return false;
 
     if (ch->switchedFrom)
@@ -255,8 +260,8 @@ bool BasicMobileBehavior::isHomesick( )
     if (IS_CHARMED(ch) || RIDDEN(ch))
         return false;
 
-    if (ch->getWrapper( ))
-        return false;
+//    if (ch->getWrapper( ))
+//        return false;
     
     return true;
 }
@@ -345,7 +350,7 @@ bool BasicMobileBehavior::spell( Character *caster, int sn, bool before )
         }
         
         if (beforeSpell != ch->in_room->vnum) 
-            remember( get_room_index( beforeSpell ) );
+            remember( get_room_instance( beforeSpell ) );
 
         return false;
     }

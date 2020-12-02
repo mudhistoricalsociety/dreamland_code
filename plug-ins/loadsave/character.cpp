@@ -146,10 +146,10 @@ bool Character::canEnter( Room *room )
     if (!can_see( room ))
         return false;
         
-    if (room->clan != clan_none && room->clan != getClan( ))
+    if (room->pIndexData->clan != clan_none && room->pIndexData->clan != getClan( ))
         return false;
     
-    if (!room->guilds.empty( ) && !room->guilds.isSet( getProfession( ) ))
+    if (!room->pIndexData->guilds.empty( ) && !room->pIndexData->guilds.isSet( getProfession( ) ))
         return false;
     
     if (room->behavior && !room->behavior->canEnter( this ))
@@ -173,14 +173,20 @@ bool Object::mustDisappear( Character *ch )
         return false;
 
     if (pIndexData->limit > 0) {
-        if (ch->getModifyLevel( ) > level + 20)
+        if (ch->getModifyLevel( ) > level + 20) {
+	    ch->send_to("Ты уже слишком опыт{Smен{Sfна{Sx для этого лимита.\n\r");		
             return true;
+	}	
             
-        if (ch->getModifyLevel( ) < level - 3)
+        if (ch->getModifyLevel( ) < level - 3) {
+	    ch->send_to("Ты еще слишком неопыт{Smен{Sfна{Sx для этого лимита.\n\r");		
             return true;
+	}
 
-        if (!IS_SET(ch->act, PLR_CONFIRMED))
+        if (!IS_SET(ch->act, PLR_CONFIRMED)) {
+	    ch->send_to("Чтобы пользоваться лимитами, надо сначала {hhподтвердить{x описание.\n\r");		
             return true;
+	}
     }
     
     if (ch->getModifyLevel( ) < level - 3 && level > ANGEL)
@@ -205,7 +211,7 @@ bool eyes_blinded( Character *ch )
     if (!IS_AFFECTED(ch, AFF_BLIND))
         return false;
         
-    if (ch->getConfig( )->holy)
+    if (ch->getConfig( ).holy)
         return false;
 
     return true;
@@ -216,7 +222,7 @@ bool eyes_darkened( Character *ch )
     if (!ch->in_room->isDark( ))
         return false;
 
-    if (ch->getConfig( )->holy)
+    if (ch->getConfig( ).holy)
         return false;
 
     if (ch->is_vampire() || IS_AFFECTED(ch, AFF_INFRARED))

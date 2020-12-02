@@ -47,7 +47,7 @@ struct BasicMobileBehavior::VampVictims : public vector<Character *> {
             return false;
 
         // Don't get distracted on a hunt.
-        if (ch->zone && ch->in_room->area != ch->zone && vamp->hasLastFought())
+        if (ch->zone && ch->in_room->areaIndex() != ch->zone && vamp->hasLastFought())
             return false;
 
         return true;
@@ -77,12 +77,8 @@ struct BasicMobileBehavior::VampVictims : public vector<Character *> {
     }
     inline bool mustSuck( Character *wch )
     {
-        Affect *paf;
+        Affect *paf = wch->affected.find(gsn_vampiric_touch);
 
-        for (paf = wch->affected; paf; paf = paf->next)
-            if (paf->type == gsn_vampiric_touch)
-                break;
-        
         if (!paf && number_percent( ) < 30)
             return true;
         if (paf && paf->duration == 0)
@@ -298,7 +294,7 @@ bool BasicMobileBehavior::canAggressVampire( Character *wch )
         return false;
     if (wch->is_npc( ) && IS_SET(wch->act, ACT_UNDEAD|ACT_VAMPIRE))
         return false;
-    if (wch->is_immortal( ))
+    if (wch->is_immortal() && !wch->getPC()->getAttributes().isAvailable("ai_aggress"))
         return false;
     if (wch->getModifyLevel( ) > ch->getModifyLevel( ) + 8)
         return false;

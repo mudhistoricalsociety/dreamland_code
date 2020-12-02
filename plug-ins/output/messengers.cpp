@@ -21,7 +21,7 @@ static DLString telegram_string(const DLString &source)
 {
     ostringstream outBuf;
 
-    vistags_convert(source.c_str(), outBuf, 0);
+    mudtags_convert(source.c_str(), outBuf, TAGS_CONVERT_VIS);
     DLString dest = outBuf.str();
     dest.colourstrip();
     
@@ -78,7 +78,7 @@ static DLString discord_string(const DLString &source)
 {
     ostringstream outBuf;
 
-    vistags_convert(source.c_str(), outBuf, 0);
+    mudtags_convert(source.c_str(), outBuf, TAGS_CONVERT_VIS);
     DLString dest = outBuf.str();
     dest.colourstrip();
 
@@ -138,7 +138,7 @@ void send_discord_ic(Character *ch, const DLString &format, const DLString &msg)
 {
     // Create a pseudo-player, with just enough parameters in order not to crash.
     PCharacter vict;
-    vict.in_room = get_room_index(2);
+    vict.in_room = get_room_instance(2);
     vict.config.setBit(CONFIG_RUNAMES);
 
     DLString description = fmt(&vict, format.c_str(), ch, msg.c_str(), 0);

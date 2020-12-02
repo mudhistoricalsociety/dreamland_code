@@ -78,6 +78,10 @@
 
 GSN(none);
 
+bool dup_mob_vnum( int vnum );
+bool dup_obj_vnum( int vnum );
+const FlagTable * affect_where_to_table(int where);
+
 /*
  * parse one mobile. no explicit side effects
  */
@@ -89,6 +93,7 @@ load_mobile(FILE *fp, MOB_INDEX_DATA *pMobIndex)
 {
     Race *race;
     MobileBehavior::Pointer shopper;
+    const char *word;
 
     pMobIndex->wrapper                = 0;
 
@@ -132,8 +137,9 @@ load_mobile(FILE *fp, MOB_INDEX_DATA *pMobIndex)
     pMobIndex->damage[DICE_TYPE]    = fread_number( fp );
                                       fread_letter( fp );
     pMobIndex->damage[DICE_BONUS]   = fread_number( fp );
-    if (( pMobIndex->dam_type = weapon_flags.value(fread_word(fp)) ) == NO_FLAG) 
-        throw FileFormatException("load_mobile %d bad dam_type", pMobIndex->vnum);
+    word = fread_word(fp);
+    if (( pMobIndex->dam_type = weapon_flags.value(word) ) == NO_FLAG) 
+        throw FileFormatException("load_mobile %d bad dam_type %s", pMobIndex->vnum, word);
 
     /* read armor class */
     pMobIndex->ac[AC_PIERCE]        = fread_number( fp ) * 10;
@@ -269,13 +275,15 @@ load_mobiles( FILE *fp )
         if ( vnum == 0 )
             break;
 
-        if ( get_mob_index( vnum ) != NULL ) 
+        if (dup_mob_vnum( vnum )) 
             throw FileFormatException("load_mobiles: vnum %d duplicated", vnum);
-        
+
+        notice("...loading mob %d", vnum);
+
         pMobIndex = new MOB_INDEX_DATA;
         *pMobIndex = zeroMobIndex;
         pMobIndex->vnum = vnum;
-        pMobIndex->area        = area_last;
+        pMobIndex->area = areaIndexes.back();
         load_mobile(fp, pMobIndex);
         newmobs++;
         
@@ -306,7 +314,6 @@ load_object(FILE *fp, OBJ_INDEX_DATA *pObjIndex)
     char letter;
 
     pObjIndex->wrapper                = 0;
-    pObjIndex->rnext                = 0;
 
     pObjIndex->new_format       = true;
     pObjIndex->reset_num        = 0;
@@ -397,32 +404,31 @@ load_object(FILE *fp, OBJ_INDEX_DATA *pObjIndex)
 
     for ( ; ; ) {
         char letter;
+        int where;
 
         letter = fread_letter( fp );
 
         if ( letter == 'A' ) {
             paf                     = dallocate( Affect );
-            paf->where                    = TO_OBJECT;
+            where                    = TO_OBJECT;
             paf->type.assign( gsn_none );
             paf->level              = pObjIndex->level;
             paf->duration           = -1;
             paf->location           = fread_number( fp );
             paf->modifier           = fread_number( fp );
-            paf->bitvector          = 0;
 
-            paf->next               = pObjIndex->affected;
-            pObjIndex->affected     = paf;
+            pObjIndex->affected.push_front(paf);
             top_affect++;
         } else if (letter == 'F') {
             paf                     = dallocate( Affect );
             
             letter                     = fread_letter(fp);
             switch (letter) {
-            case 'A': paf->where    = TO_AFFECTS;   break;
-            case 'I': paf->where    = TO_IMMUNE;    break;
-            case 'R': paf->where    = TO_RESIST;    break;
-            case 'V': paf->where    = TO_VULN;            break;
-            case 'D': paf->where    = TO_DETECTS;   break;
+            case 'A': where    = TO_AFFECTS;   break;
+            case 'I': where    = TO_IMMUNE;    break;
+            case 'R': where    = TO_RESIST;    break;
+            case 'V': where    = TO_VULN;            break;
+            case 'D': where    = TO_DETECTS;   break;
             default:
                 throw FileFormatException("load_object %d bad 'where' on flag set", pObjIndex->vnum);
             }
@@ -432,10 +438,10 @@ load_object(FILE *fp, OBJ_INDEX_DATA *pObjIndex)
             paf->duration           = -1;
             paf->location           = fread_number(fp);
             paf->modifier           = fread_number(fp);
-            paf->bitvector          = fread_flag(fp);
+            paf->bitvector.setTable(affect_where_to_table(where));
+            paf->bitvector.setValue(fread_flag(fp));
 
-            paf->next               = pObjIndex->affected;
-            pObjIndex->affected     = paf;
+            pObjIndex->affected.push_front(paf);
             top_affect++;
         } else if ( letter == 'E' ) {
             EXTRA_DESCR_DATA *ed;
@@ -485,7 +491,7 @@ load_objects( FILE *fp )
     static OBJ_INDEX_DATA zeroObjIndex;
     OBJ_INDEX_DATA *pObjIndex = NULL;
 
-    if ( area_last == 0 ) {
+    if (areaIndexes.empty()) {
         LogStream::sendFatal( ) << "Load_resets: no #AREA seen yet." << endl;
         exit( 1 );
     }
@@ -503,13 +509,13 @@ load_objects( FILE *fp )
         if ( vnum == 0 )
             break;
 
-        if ( get_obj_index( vnum ) != NULL ) 
+        if (dup_obj_vnum(vnum)) 
             throw FileFormatException("load_objects: vnum %d duplicated", vnum);
         
         pObjIndex = new OBJ_INDEX_DATA;
         *pObjIndex = zeroObjIndex;
         pObjIndex->vnum = vnum;
-        pObjIndex->area        = area_last;
+        pObjIndex->area  = areaIndexes.back();
         load_object(fp, pObjIndex);
 
         newobjs++;

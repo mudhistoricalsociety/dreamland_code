@@ -34,6 +34,7 @@
 #include "gsn_plugin.h"
 #include "../anatolia/handler.h"
 #include "comm.h"
+#include "math_utils.h"
 #include "recipeflags.h"
 #include "act_move.h"
 #include "act_lock.h"
@@ -50,7 +51,7 @@ DLString quality_percent( int ); /* XXX */
 /* From act_info.cpp */
 void lore_fmt_item( Character *ch, Object *obj, ostringstream &buf, bool showName );
 void lore_fmt_wear( int type, int wear, ostringstream &buf );
-void lore_fmt_affect( Affect *paf, ostringstream &buf );
+void lore_fmt_affect( Object *obj, Affect *paf, ostringstream &buf );
 
 SPELL_DECL(AcuteVision);
 VOID_SPELL(AcuteVision)::run( Character *ch, Character *victim, int sn, int level ) 
@@ -66,13 +67,13 @@ VOID_SPELL(AcuteVision)::run( Character *ch, Character *victim, int sn, int leve
                  ch,0,victim,TO_CHAR,POS_RESTING);
         return;
     }
-    af.where            = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = level;
-    af.location  = APPLY_NONE;
+    
     af.modifier  = 0;
-    af.bitvector = ACUTE_VISION;
+    af.bitvector.setValue(ACUTE_VISION);
     affect_to_char( victim, &af );
     victim->send_to("Твое зрение обостряется.\n\r");
     if ( ch != victim )
@@ -97,13 +98,13 @@ VOID_SPELL(DetectEvil)::run( Character *ch, Character *victim, int sn, int level
                  ch,0,victim,TO_CHAR,POS_RESTING);
         return;
     }
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level         = level;
     af.duration  = (5 + level / 3);
     af.modifier  = 0;
-    af.location  = APPLY_NONE;
-    af.bitvector = DETECT_EVIL;
+    
+    af.bitvector.setValue(DETECT_EVIL);
     affect_to_char( victim, &af );
     victim->send_to("Теперь ты чувствуешь {Dзло{x.\n\r");
     if ( ch != victim )
@@ -129,13 +130,13 @@ VOID_SPELL(DetectGood)::run( Character *ch, Character *victim, int sn, int level
                  ch,0,victim,TO_CHAR,POS_RESTING);
         return;
     }
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = (5 + level / 3);
     af.modifier  = 0;
-    af.location  = APPLY_NONE;
-    af.bitvector = DETECT_GOOD;
+    
+    af.bitvector.setValue(DETECT_GOOD);
     affect_to_char( victim, &af );
     victim->send_to("Теперь ты чувствуешь присутствие {Wдобра{x.\n\r");
     if ( ch != victim )
@@ -160,13 +161,13 @@ VOID_SPELL(DetectHidden)::run( Character *ch, Character *victim, int sn, int lev
                  ch,0,victim,TO_CHAR,POS_RESTING);
         return;
     }
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = (5 + level / 3);
-    af.location  = APPLY_NONE;
+    
     af.modifier  = 0;
-    af.bitvector = DETECT_HIDDEN;
+    af.bitvector.setValue(DETECT_HIDDEN);
     affect_to_char( victim, &af );
     victim->send_to("Теперь ты чувствуешь присутствие скрытых сил.\n\r");
     if ( ch != victim )
@@ -192,13 +193,13 @@ VOID_SPELL(DetectInvis)::run( Character *ch, Character *victim, int sn, int leve
         return;
     }
 
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = (5 + level / 3);
     af.modifier  = 0;
-    af.location  = APPLY_NONE;
-    af.bitvector = DETECT_INVIS;
+    
+    af.bitvector.setValue(DETECT_INVIS);
     affect_to_char( victim, &af );
     victim->send_to("Теперь ты чувствуешь присутствие невидимых сил.\n\r");
     if ( ch != victim )
@@ -224,13 +225,13 @@ VOID_SPELL(DetectMagic)::run( Character *ch, Character *victim, int sn, int leve
         return;
     }
 
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level         = level;
     af.duration  = (5 + level / 3);
     af.modifier  = 0;
-    af.location  = APPLY_NONE;
-    af.bitvector = DETECT_MAGIC;
+    
+    af.bitvector.setValue(DETECT_MAGIC);
     affect_to_char( victim, &af );
     victim->send_to("Твои глаза загораются.\n\r");
     if ( ch != victim )
@@ -273,13 +274,13 @@ VOID_SPELL(DetectUndead)::run( Character *ch, Character *victim, int sn, int lev
                 return;
     }
 
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level         = level;
     af.duration  = (5 + level / 3);
     af.modifier  = 0;
-    af.location  = APPLY_NONE;
-    af.bitvector = DETECT_UNDEAD;
+    
+    af.bitvector.setValue(DETECT_UNDEAD);
     affect_to_char( victim, &af );
     ch->send_to("Теперь ты чувствуешь нежить.\n\r");
 
@@ -354,13 +355,13 @@ VOID_SPELL(ImprovedDetect)::run( Character *ch, Character *victim, int sn, int l
         return;
     }
 
-    af.where     = TO_DETECTS;
+    af.bitvector.setTable(&detect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = level / 3;
     af.modifier  = 0;
-    af.location  = APPLY_NONE;
-    af.bitvector = DETECT_IMP_INVIS;
+    
+    af.bitvector.setValue(DETECT_IMP_INVIS);
     affect_to_char( victim, &af );
     victim->send_to("Теперь ты чувствуешь присутствие очень невидимых сил.\n\r");
     if ( ch != victim )
@@ -448,11 +449,11 @@ VOID_SPELL(LocateObject)::run( Character *ch, char *target_name, int sn, int lev
         {
             if (ch->is_immortal() && in_obj->in_room != 0)
                 sprintf( buf, "находится в %s [Комната %d]\n\r",
-                    in_obj->in_room->name, in_obj->in_room->vnum);
+                    in_obj->in_room->getName(), in_obj->in_room->vnum);
             else
                 sprintf( buf, "находится в %s\n\r",
                     in_obj->in_room == 0
-                        ? "somewhere" : in_obj->in_room->name );
+                        ? "somewhere" : in_obj->in_room->getName() );
         }
 
         buf[0] = Char::upper(buf[0]);
@@ -479,13 +480,13 @@ VOID_SPELL(Observation)::run( Character *ch, Character *victim, int sn, int leve
     return;
   }
 
-  af.where        = TO_DETECTS;
+  af.bitvector.setTable(&detect_flags);
   af.type        = sn;
   af.level        = level;
   af.duration        = ( 10 + level / 5 );
-  af.location        = APPLY_NONE;
+  
   af.modifier        = 0;
-  af.bitvector        = DETECT_OBSERVATION;
+  af.bitvector.setValue(DETECT_OBSERVATION);
   affect_to_char( victim, &af );
   ch->send_to("Теперь ты замечаешь состояние других.\n\r");
   return;
@@ -522,13 +523,13 @@ SKILL_RUNP( detect )
                 return;
         }
 
-        af.where     = TO_DETECTS;
+        af.bitvector.setTable(&detect_flags);
         af.type      = gsn_detect_hide;
         af.level     = ch->getModifyLevel();
         af.duration  = ch->getModifyLevel();
-        af.location  = APPLY_NONE;
+        
         af.modifier  = 0;
-        af.bitvector = DETECT_HIDDEN;
+        af.bitvector.setValue(DETECT_HIDDEN);
         affect_to_char( ch, &af );
         ch->send_to( "Твоя информированность повышается.\n\r");
         gsn_detect_hide->improve( ch, true );
@@ -561,7 +562,6 @@ SKILL_RUNP( lore )
   char arg1[MAX_INPUT_LENGTH];
   Object *obj;
   char buf[MAX_STRING_LENGTH];
-  Affect *paf;
   int chance;
   int value0, value1, value2, value3;
   int mana, learned;
@@ -603,6 +603,17 @@ SKILL_RUNP( lore )
                         obj->weight / 10,
                         obj->level);
                 ch->send_to(buf);
+            
+                if (obj->timer != 0){
+                  if(learned < 85){
+                    sprintf(buf, "{WЭтот предмет скоро исчезнет.{x\r\n");
+                    ch->send_to(buf);
+                  }
+                  else{
+                    ch->send_to(fmt(0, "{WЭтот предмет исчезнет через %1$d мину%1$Iту|ты|т.{x\r\n", obj->timer));
+                  }
+                }
+
                 ch->send_to("\n\rБолее про эту вещь невозможно ничего сказать.\n\r");
                 return;
         }
@@ -617,6 +628,11 @@ SKILL_RUNP( lore )
     {
       sprintf( buf, "Объект: '%s'.\n\r", obj->getName( ));
       ch->send_to(buf);
+
+      if (obj->timer != 0){
+      sprintf(buf, "{WЭтот предмет скоро исчезнет.{x\r\n");
+      ch->send_to(buf);
+      }
       ch->mana -= mana;
       gsn_lore->improve( ch, true );
       return;
@@ -635,6 +651,12 @@ SKILL_RUNP( lore )
         sprintf( buf, "Материал: %s.\n\r", obj->getMaterial( ));
         ch->send_to(buf);
       }
+
+      if (obj->timer != 0){
+      sprintf(buf, "{WЭтот предмет скоро исчезнет.{x\r\n");
+      ch->send_to(buf);
+      }
+
       ch->mana -= mana;
       gsn_lore->improve( ch, true );
       return;
@@ -651,6 +673,12 @@ SKILL_RUNP( lore )
           str_cmp(obj->getMaterial( ),"oldstyle")?obj->getMaterial( ):"unknown"
               );
       ch->send_to(buf);
+
+      if (obj->timer != 0){
+      sprintf(buf, "{WЭтот предмет скоро исчезнет.{x\r\n");
+      ch->send_to(buf);
+      }
+
       oprog_lore(obj, ch);
       ch->mana -= mana;
       gsn_lore->improve( ch, true );
@@ -670,6 +698,12 @@ SKILL_RUNP( lore )
           str_cmp(obj->getMaterial( ),"oldstyle")?obj->getMaterial( ):"unknown"
               );
       ch->send_to(buf);
+
+      if (obj->timer != 0){
+      sprintf(buf, "{WЭтот предмет скоро исчезнет.{x\r\n");
+      ch->send_to(buf);
+      }
+
       oprog_lore(obj, ch);
       
       ch->mana -= mana;
@@ -690,6 +724,12 @@ SKILL_RUNP( lore )
           str_cmp(obj->getMaterial( ),"oldstyle")?obj->getMaterial( ):"unknown"
               );
       ch->send_to(buf);
+
+      if (obj->timer != 0){
+      sprintf(buf, "{WЭтот предмет скоро исчезнет.{x\r\n");
+      ch->send_to(buf);
+      }
+
     }
   else
     {
@@ -704,6 +744,11 @@ SKILL_RUNP( lore )
           str_cmp(obj->getMaterial( ),"oldstyle")?obj->getMaterial( ):"unknown"
               );
       ch->send_to(buf);
+
+      if (obj->timer != 0){
+      ch->send_to(fmt(0, "{WЭтот предмет исчезнет через %1$d мину%1$Iту|ты|т.{x\r\n", obj->timer));
+      }
+
     }
 
   ch->mana -= mana;
@@ -916,8 +961,7 @@ SKILL_RUNP( lore )
                   );
 
         sprintf(buf,"Повреждения %dd%d (среднее %d).\n\r",
-                value1,value2,
-                (1 + value2) * value1 / 2);
+                value1,value2, dice_ave(value1, value2));
       ch->send_to(buf);
       if (learned > 85){
 	if(obj->value3()) // damage type
@@ -987,11 +1031,11 @@ SKILL_RUNP( lore )
   ostr.str(std::string());
 
   if (!obj->enchanted)
-      for (paf = obj->pIndexData->affected; paf != 0; paf = paf->next)
-          lore_fmt_affect( paf, ostr );
+      for (auto &paf: obj->pIndexData->affected)
+          lore_fmt_affect( obj, paf, ostr );
 
-  for (paf = obj->affected; paf != 0; paf = paf->next)
-          lore_fmt_affect( paf, ostr );
+  for (auto &paf: obj->affected)
+          lore_fmt_affect( obj, paf, ostr );
 
       ch->send_to(ostr);
 

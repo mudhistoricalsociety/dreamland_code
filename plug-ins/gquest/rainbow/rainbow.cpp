@@ -85,7 +85,7 @@ void RainbowGQuest::create( const Config& config )
         
         mob = ch->getNPC( );
         
-        if (scenario->checkArea( mob->in_room->area )
+        if (scenario->checkArea( mob->in_room->areaIndex() )
             && scenario->checkRoom( mob->in_room )
             && scenario->checkMobile( mob ))
         {
@@ -153,7 +153,7 @@ void RainbowGQuest::cleanup( )
     LogStream::sendNotice( ) << "Rainbow cleanup." << endl;
 
     for (i = 0; i < roomVnums.size( ); i++)
-        REMOVE_BIT(get_room_index(roomVnums[i])->area->area_flag, AREA_NOGATE);
+        REMOVE_BIT(get_room_instance(roomVnums[i])->area->area_flag, AREA_NOGATE);
         
     for (ch = char_list; ch; ch = ch_next) {
         ch_next = ch->next;
@@ -228,11 +228,14 @@ void RainbowGQuest::report( std::ostringstream &buf, PCharacter *ch ) const
         getScenario( )->printCount( cnt, buf );
 
     getScenario( )->printTime( buf );
+
+    if (ch->getAttributes().isAvailable(getQuestID())) 
+        buf << fmt(0, "{RТы не сможешь больше принимать участие в задании, т.к. осквернил%Gо||а свои руки убийством.{x", ch)
+            << endl;
 }
 
 void RainbowGQuest::progress( std::ostringstream &ostr ) const
 {
-    char buf[MAX_STRING_LENGTH];
     int cnt;
     Character *ch;
 
@@ -247,17 +250,16 @@ void RainbowGQuest::progress( std::ostringstream &ostr ) const
         cnt = countPieces( ch );
         
         if (cnt > 0) {
-            sprintf(buf, "%s%-15s %s%-4d%s",
+            ostr << dlprintf("%s%-15s %s%-4d%s",
                          GQChannel::NORMAL, ch->getName( ).c_str( ),         
-                         GQChannel::BOLD, cnt, GQChannel::NORMAL);
-            ostr << buf << endl;
+                         GQChannel::BOLD, cnt, GQChannel::NORMAL)
+                 << endl;
         }
     }
 }
 
 void RainbowGQuest::getQuestDescription( std::ostringstream &str ) const
 {
-    char buf[MAX_STRING_LENGTH];
     Character *ch;
     NPCharacter *mob;
     int t = getRemainedTime( );
@@ -277,13 +279,11 @@ void RainbowGQuest::getQuestDescription( std::ostringstream &str ) const
             continue;
         
         
-        sprintf(buf, "%s%-30s%s из %s%s",
+        str << dlprintf("%s%-30s%s из %s%s",
                      GQChannel::NORMAL, ch->getNameP( '1' ).c_str( ), 
-                     GQChannel::NORMAL, ch->in_room->name, GQChannel::NORMAL);
-        str << buf;
-        
+                     GQChannel::NORMAL, ch->in_room->getName(), GQChannel::NORMAL);
         if (t <= 5)
-            str << " ({hh" << ch->in_room->area->name << "{hx)" << GQChannel::NORMAL;
+            str << " ({hh" << ch->in_room->areaName() << "{hx)" << GQChannel::NORMAL;
         
         str << endl;
     }
@@ -322,7 +322,7 @@ void RainbowGQuest::rewardWinner( )
 
     getScenario( )->printWinnerMsgOther( pci->getName( ), buf );
 
-    GQChannel::gecho( this, buf.str( ), dynamic_cast<PCharacter *>( pci ) );
+    GQChannel::gecho( getDisplayName(), buf.str( ), pci->getPlayer() );
 
     pci->getAttributes( ).getAttr<XMLAttributeGlobalQuest>( "gquest" )
                     ->rememberVictory( getQuestID( ) );
@@ -359,6 +359,7 @@ Object * RainbowGQuest::createPiece( int number )
     piece = create_object( pObjIndex, 0 );
     behavior->setObj( piece );
     behavior->config( number );
+    behavior->setQuest(*this);
     piece->behavior.setPointer( *behavior );
 
     return piece;

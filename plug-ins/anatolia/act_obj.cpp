@@ -127,14 +127,14 @@ bool parse_money_arguments( Character *ch, const char *arg, int amount, int &gol
 {
     if ((!arg_is_silver( arg ) && !arg_is_gold( arg ) )) {
         if (!str_prefix( arg, "серебр" ) || !str_prefix( arg, "silver" )) {
-            ch->println( "Укажи название монеты полностью: серебро или silver." );
+            ch->println( "Укажи название монеты полностью: {lrсеребро{lesilver{x." );
             return false;
         }
         if (!str_prefix( arg, "золот" ) || !str_prefix( arg, "gold" )) {
-            ch->println( "Укажи название монеты полностью: золото или gold." );
+            ch->println( "Укажи название монеты полностью: {lrзолото{legold{x." );
             return false;
         }
-        ch->println( "Ты можешь указать количество денег в серебре (silver) или золоте (gold)." );
+        ch->println( "Ты можешь указать количество денег в серебре {le(silver) {xили золоте {le(gold){x." );
         return false;
     }
     if (amount < 0) {
@@ -321,7 +321,7 @@ static bool oprog_can_fetch_corpse_pc( Character *ch, Object *container )
     }
     
     if (container->count == 0) {
-        ch->send_to("Более тебе ничего нельзя взять.\n\r");
+        ch->send_to("Больше взять ничего не получится.\n\r");
         return false;
     }
 
@@ -696,7 +696,8 @@ CMDRUNP( get )
 
             if (IS_PIT(container) && !ch->is_immortal() )
             {
-                ch->send_to("Не будь столь жаден!\n\r");
+                ch->send_to("Не жадничай, пожертвования могут понадобиться кому-то еще.\n\r");
+                ch->send_to("И, кстати, не забудь, что продать вещи из ямы для пожертвований все равно не получится.\n\r");             
                 return;
             }
                 
@@ -758,13 +759,17 @@ static bool can_put_into( Character *ch, Object *container, const DLString &pock
 {
     switch (container->item_type) {
     case ITEM_CONTAINER:
+        if (IS_SET(container->value1(), CONT_LOCKED)) {
+            ch->pecho("%1$^O1 заперт%1$Gо||а на ключ, попробуй отпереть.", container);
+            return false;
+        }
         if (IS_SET(container->value1(), CONT_CLOSED)) {
-            ch->println( "Тут закрыто." );
+            ch->pecho("%1$^O1 закрыт%1$Gо||а, попробуй открыть.", container);
             return false;
         }
 
         if (!pocket.empty( ) && !IS_SET(container->value1(), CONT_WITH_POCKETS)) {
-            ch->println( "Тебе не удалось нашарить ни одного кармана." );
+            ch->pecho( "Тебе не удалось нашарить ни одного кармана на %O6.", container );
             return false;
         }
 
@@ -774,17 +779,15 @@ static bool can_put_into( Character *ch, Object *container, const DLString &pock
         return true;
 
     default:
-        ch->println("Это не контейнер.");
+        ch->pecho("Ты пытаешься что-то положить в %O4, но это не контейнер.", container);
         return false;
     }
-
-
 }
 
 static bool can_put_money_into( Character *ch, Object *container )
 {
     if (container->item_type != ITEM_CONTAINER) {
-        ch->pecho("%^O1 не контейнер.", container);
+        ch->pecho("Ты пытаешься положить деньги в %O4, но это не контейнер.", container);
         return false;
     }
 
@@ -1173,9 +1176,9 @@ static int drop_obj( Character *ch, Object *obj )
         && material_swims( obj ) == SWIM_NEVER)
     {
         if (!IS_AFFECTED(ch, AFF_SNEAK))
-            ch->recho( "%1$^O1 тон%1$nет|ут в %2$N6.", obj, ch->in_room->liquid->getShortDescr( ).c_str( ) );
+            ch->recho( "%1$^O1 тон%1$nет|ут в %2$N6.", obj, ch->in_room->pIndexData->liquid->getShortDescr( ).c_str( ) );
 
-        ch->pecho( "%1$^O1 тон%1$nет|ут в %2$N6.", obj, ch->in_room->liquid->getShortDescr( ).c_str( ) );
+        ch->pecho( "%1$^O1 тон%1$nет|ут в %2$N6.", obj, ch->in_room->pIndexData->liquid->getShortDescr( ).c_str( ) );
     }
     else if (IS_OBJ_STAT(obj, ITEM_MELT_DROP))
     {
@@ -1185,9 +1188,9 @@ static int drop_obj( Character *ch, Object *obj )
         ch->pecho( "%1$^O1 превраща%1$nется|ются в дым.", obj );
     }
     else if (!IS_WATER( ch->in_room ) 
-             && ch->in_room->sector_type != SECT_AIR
-             && ch->in_room->sector_type != SECT_FOREST
-             && ch->in_room->sector_type != SECT_DESERT
+             && ch->in_room->getSectorType() != SECT_AIR
+             && ch->in_room->getSectorType() != SECT_FOREST
+             && ch->in_room->getSectorType() != SECT_DESERT
              && obj->pIndexData->vnum == OBJ_VNUM_POTION_VIAL
 //             && material_is_flagged( obj, MAT_FRAGILE )
              && chance( 40 ))
@@ -1238,9 +1241,9 @@ CMDRUNP( drop )
         {
             extract_obj( obj );
             if ( !IS_AFFECTED(ch, AFF_SNEAK) )
-                act("Монеты падают и тонут в $n6.", ch, ch->in_room->liquid->getShortDescr( ).c_str( ), 0, TO_ROOM);
+                act("Монеты падают и тонут в $n6.", ch, ch->in_room->pIndexData->liquid->getShortDescr( ).c_str( ), 0, TO_ROOM);
 
-            act("Монеты падают и тонут в $n6.", ch, ch->in_room->liquid->getShortDescr( ).c_str( ), 0, TO_CHAR);
+            act("Монеты падают и тонут в $n6.", ch, ch->in_room->pIndexData->liquid->getShortDescr( ).c_str( ), 0, TO_CHAR);
         }
         else
         {
@@ -1709,7 +1712,7 @@ CMDRUNP( make )
         }
     }
 
-    ch->println("Ты можешь изготовить только лук(bow) или стрелы(arrow).");
+    ch->println("Ты можешь изготовить только лук {le(bow) {xили стрелы{le (arrow){x.");
 }
 
 CMDRUNP( search )
@@ -1723,7 +1726,7 @@ CMDRUNP( search )
         }
     }
 
-    ch->println("Ты можешь искать только камни (stones).");
+    ch->println("Ты можешь искать только камни{le (stones){x.");
 }
 
 CMDRUNP( throw )

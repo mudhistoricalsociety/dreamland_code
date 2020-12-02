@@ -19,12 +19,18 @@ class Room;
 class Character;
 class PCharacter;
 class NPCharacter;
+class FlagTable;
 
 struct mob_index_data;
 struct obj_index_data;
 
+#define FCREATE_NOCOUNT   (A)
+#define FCREATE_NOAFFECTS (B)
+
 NPCharacter *        create_mobile        ( mob_index_data *pMobIndex );
 NPCharacter *        create_mobile_nocount( mob_index_data * );
+NPCharacter *        create_mobile_org( mob_index_data *pMobIndex, int flags );
+void create_mob_affects(NPCharacter *mob);
 void                clone_mobile        ( NPCharacter *parent, NPCharacter *clone);
 Object *        create_object        ( obj_index_data *pObjIndex, short level );
 Object *        create_object_nocount ( obj_index_data *pObjIndex, short level );
@@ -36,12 +42,12 @@ void        affect_remove_obj( Object *, Affect *paf );
 void        affect_enchant   ( Object *obj );
 void        affect_enhance   ( Object *obj, Affect * );
 void        affect_modify    ( Character *ch, Affect *paf, bool fAdd );
-void        affect_check         ( Character *ch, int where, int vector);
+void        affect_check         ( Character *ch, Affect *old_paf);
 void        affect_to_char         ( Character *ch, Affect *paf );
 void        affect_remove         ( Character *ch, Affect *paf );
 void        affect_strip         ( Character *ch, int sn );
-void        affect_bit_strip ( Character *ch, int where, int bits);
-bool        affect_bit_check ( Affect *paf_list, short where, int bits );
+void        affect_strip         ( Object *obj, int sn );
+void        affect_bit_strip ( Character *ch, const FlagTable *table, int bits);
 void        affect_join         ( Character *ch, Affect *paf );
 void        postaffect_to_char( Character *ch, int sn, int duration );
 
@@ -112,6 +118,8 @@ bool can_see_god(Character *ch, Character *god);
 bool obj_has_name( Object *obj, const DLString &arg, Character *ch );
 long long get_arg_id( const DLString &cArgument );
 bool obj_has_name_or_id( Object *obj, const DLString &arg, Character *ch, long long id );
+Object *find_pit_for_obj(Object *obj);
+Object *find_pit_in_room(int roomVnum);
 
 bool eyes_blinded( Character *ch );
 bool eyes_darkened( Character *ch );

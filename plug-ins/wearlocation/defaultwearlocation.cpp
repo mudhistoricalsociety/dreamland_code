@@ -51,6 +51,11 @@ bool DefaultWearlocation::isValid( ) const
     return true;
 }
 
+bool DefaultWearlocation::givesAffects() const
+{
+    return true;
+}
+
 void DefaultWearlocation::setName( const DLString &name )
 {
     this->name = name;
@@ -150,13 +155,11 @@ bool DefaultWearlocation::equip( Object *obj )
 
 void DefaultWearlocation::affectsOnEquip( Character *ch, Object *obj )
 {
-    Affect *paf;
-    
     if (!obj->enchanted)
-        for (paf = obj->pIndexData->affected; paf != 0; paf = paf->next)
+        for (auto &paf: obj->pIndexData->affected)
             affect_modify( ch, paf, true );
 
-    for (paf = obj->affected; paf != 0; paf = paf->next)
+    for (auto &paf: obj->affected)
         affect_modify( ch, paf, true );
 }
 
@@ -260,17 +263,15 @@ void DefaultWearlocation::unequip( Object *obj )
 
 void DefaultWearlocation::affectsOnUnequip( Character *ch, Object *obj )
 {
-    Affect *paf;
-
     if (!obj->enchanted)
-        for ( paf = obj->pIndexData->affected; paf != 0; paf = paf->next ) {
+        for (auto &paf: obj->pIndexData->affected) {
             affect_modify( ch, paf, false );
-            affect_check(ch,paf->where,paf->bitvector);
+            affect_check(ch, paf);
         }
 
-    for ( paf = obj->affected; paf != 0; paf = paf->next ) {
+    for (auto &paf: obj->affected) {
         affect_modify( ch, paf, false );
-        affect_check(ch,paf->where,paf->bitvector);        
+        affect_check(ch, paf);
     }
 }
 

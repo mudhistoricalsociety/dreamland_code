@@ -26,12 +26,14 @@
 #include "room.h"
 #include "object.h"
 #include "desire.h"
+#include "damage.h"
 
 #include "gsn_plugin.h"
 #include "act_move.h"
 #include "mercdb.h"
 #include "magic.h"
 #include "fight.h"
+#include "weapon-generator.h"
 #include "vnum.h"
 #include "merc.h"
 #include "effects.h"
@@ -124,7 +126,7 @@ static void yell_explode( Character *ch, Character *victim )
 
 SKILL_RUNP( explode )
 {
-    Character *vch, *vch_next, *victim;
+    Character *victim;
     int dam, hp_dam, dice_dam, mana;
     int hpch, level;
     char arg[MAX_INPUT_LENGTH];
@@ -185,8 +187,9 @@ SKILL_RUNP( explode )
         fire_effect(victim->in_room,level,dam/2,TARGET_ROOM);
     }
 
-    for (vch = victim->in_room->people; vch != 0; vch = vch_next) {
-        vch_next = vch->next_in_room;
+    for ( auto &vch : victim->in_room->getPeople()){
+       
+       if(!vch->isDead() && vch->in_room == victim->in_room){
 
         if ( vch->is_mirror() && ( number_percent() < 50 ) ) 
             continue;
@@ -200,20 +203,32 @@ SKILL_RUNP( explode )
             continue;
 
         if (vch == victim) /* full damage */ {
-            fire_effect(vch,level,dam,TARGET_CHAR);
-            damage(ch,vch,dam,gsn_explode,DAM_FIRE,true, DAMF_WEAPON);
+            try{
+            fire_effect(vch,level,dam,TARGET_CHAR);            
+            damage_nocatch(ch,vch,dam,gsn_explode,DAM_FIRE,true, DAMF_WEAPON);
+            }
+            catch (const VictimDeathException &){
+                continue;
+            }
         }
         else /* partial damage */ {
+            try{
             fire_effect(vch,level/2,dam/4,TARGET_CHAR);
-            damage(ch,vch,dam/2,gsn_explode,DAM_FIRE,true, DAMF_WEAPON);
+            damage_nocatch(ch,vch,dam/2,gsn_explode,DAM_FIRE,true, DAMF_WEAPON);
+            }
+            catch (const VictimDeathException &){
+                continue;
+            }
         }
         
         yell_explode( ch, vch);
+    }
     }
 
     if (!ch->is_npc() && number_percent() >= gsn_explode->getEffective( ch )) {        
         fire_effect(ch,level/4,dam/10,TARGET_CHAR);
         damage(ch,ch,(ch->hit / 10),gsn_explode,DAM_FIRE,true, DAMF_WEAPON);
+    
     }
 }
 
@@ -296,7 +311,6 @@ ch->send_to("Ты пытаешься, но не можешь. Попробуй �
 SKILL_RUNP( harakiri )
 {
     int chance;
-    Affect  af;
 
     if ( MOUNTED(ch) )
     {
@@ -332,8 +346,6 @@ SKILL_RUNP( harakiri )
 
     if (number_percent() < chance)
     {
-        Affect af;
-
         ch->setWaitViolence( 1 );
 
         ch->hit = 1;
@@ -349,28 +361,13 @@ SKILL_RUNP( harakiri )
         interpret_raw( ch, "sleep" );
         SET_BIT(ch->act,PLR_HARA_KIRI);
 
-               af.where     = TO_AFFECTS;
-               af.type      = gsn_hara_kiri;
-               af.level     = ch->getModifyLevel();
-               af.duration  = 10;
-               af.location  = APPLY_NONE;
-               af.modifier  = 0;
-               af.bitvector = 0;
-               affect_to_char( ch, &af );
+        postaffect_to_char(ch, gsn_hara_kiri, 10);
     }
 
     else
     {
         ch->setWaitViolence( 2 );
-
-               af.where     = TO_AFFECTS;
-               af.type      = gsn_hara_kiri;
-               af.level     = ch->getModifyLevel();
-               af.duration  = 0;
-               af.location  = APPLY_NONE;
-               af.modifier  = 0;
-               af.bitvector = 0;
-               affect_to_char( ch, &af );
+        postaffect_to_char(ch, gsn_hara_kiri, 0);
 
         ch->send_to("Ты не можешь отрезать себе палец. Ведь это не так легко!.\n\r");
         gsn_hara_kiri->improve( ch, false );
@@ -401,7 +398,7 @@ SKILL_RUNP( katana )
 
         if ( ch->isAffected(gsn_katana) )
         {
-                ch->send_to("Но у тебя уже есть катана!\n\r");
+                ch->pecho("Ты совсем недавно уже изготавливал%Gо||а катану.", ch);
                 return;
         }
         
@@ -450,38 +447,25 @@ SKILL_RUNP( katana )
 
         if ( !ch->is_npc() && number_percent() < gsn_katana->getEffective( ch ) )
         {
-                af.where  = TO_AFFECTS;
-                af.type        = gsn_katana;
-                af.level        = ch->getModifyLevel();
-                af.duration        = ch->getModifyLevel();
-                af.modifier        = 0;
-                af.bitvector         = 0;
-                af.location        = 0;
-                affect_to_char(ch,&af);
+                postaffect_to_char(ch, gsn_katana, ch->getModifyLevel());
 
                 katana = create_object( get_obj_index( OBJ_VNUM_KATANA_SWORD), ch->getModifyLevel() );
                 katana->cost  = 0;
                 katana->level = ch->getRealLevel( );
                 ch->mana -= mana;
 
-                af.where        = TO_OBJECT;
-                af.type         = gsn_katana;
-                af.level        = ch->getModifyLevel();
-                af.duration        = -1;
-                af.location        = APPLY_DAMROLL;
-                af.modifier        = ch->getModifyLevel() / 10;
-                af.bitvector        = 0;
-                affect_to_obj( katana, &af );
+                WeaponGenerator()
+                    .item(katana)
+                    .skill(gsn_katana)
+                    .valueTier(2)
+                    .hitrollTier(1)
+                    .damrollTier(1)
+                    .hitrollStartPenalty(0.35)
+                    .damrollStartPenalty(0.35)
+                    .assignValues()
+                    .assignStartingHitroll()
+                    .assignStartingDamroll();
 
-                af.location        = APPLY_HITROLL;
-                affect_to_obj( katana, &af );
-
-                if (ch->getModifyLevel() < 70 )
-                        katana->value2(10);
-                else
-                {
-                        katana->value2(10 + (ch->getModifyLevel()-70)/7);
-                }
                 sprintf( buf,katana->pIndexData->extra_descr->description,ch->getNameP( ) );
                 katana->extra_descr = new_extra_descr();
                 katana->extra_descr->keyword =str_dup(katana->pIndexData->extra_descr->keyword );
@@ -499,7 +483,7 @@ SKILL_RUNP( katana )
         }
         else
         {
-                ch->send_to("Ты разрушаешь это.\n\r");
+                act("Ты разрушаешь $o4.",ch,part,0,TO_CHAR);
                 extract_obj(part);
                 ch->mana -= mana / 2;
                 gsn_katana->improve( ch, false );
@@ -606,13 +590,13 @@ void SamuraiGuildmaster::doFirstEnchant( Character *victim, Object *katana )
 {
     Affect af;
 
-    af.where        = TO_WEAPON;
+    af.bitvector.setTable(&weapon_type2);
     af.type        = gsn_none;
     af.level        = 100;
     af.duration        = -1;
     af.modifier        = 0;
-    af.bitvector= WEAPON_KATANA;
-    af.location        = APPLY_NONE;
+    af.bitvector.setValue(WEAPON_KATANA);
+    
     affect_to_obj( katana, &af );
     
     say_act( victim, ch, "Как только ты вооружишься этим, ты почувствуешь, что сила ее постоянно увеличивается." );

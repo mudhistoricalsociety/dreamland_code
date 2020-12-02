@@ -29,6 +29,7 @@
 #include "gsn_plugin.h"
 #include "drink_utils.h"
 #include "math_utils.h"
+#include "damage.h"
 
 #include "merc.h"
 #include "mercdb.h"
@@ -69,25 +70,25 @@ VOID_SPELL(Anathema)::run( Character *ch, Character *victim, int sn, int level )
         return;
     }
 
-    af.where        = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type         = sn;
     af.level        = level;
     af.duration     = 8 + level/10;
-    af.location     = APPLY_HITROLL;
+    af.location = APPLY_HITROLL;
     af.modifier     = - (level / 5) * strength;
     affect_to_char(victim, &af);
 
-    af.location     = APPLY_DAMROLL;
+    af.location = APPLY_DAMROLL;
     af.modifier     = - (level / 5) * strength;
     affect_to_char(victim, &af);
 
-    af.location     = APPLY_SAVING_SPELL;
+    af.location = APPLY_SAVING_SPELL;
     af.modifier     = (level / 5) * strength;
     affect_to_char(victim, &af);
 
-    af.location     = APPLY_LEVEL;
+    af.location = APPLY_LEVEL;
     af.modifier     = -strength * 3;
-    af.bitvector    = AFF_CURSE;
+    af.bitvector.setValue(AFF_CURSE);
     affect_to_char(victim, &af);
     
     act_p("Боги $c2 проклинают тебя!\r\nТы чувствуешь себя преотвратно.", 
@@ -113,13 +114,13 @@ VOID_SPELL(BlackDeath)::run( Character *ch, Room *room, int sn, int level )
      return;
     }
 
-    af.where     = TO_ROOM_AFFECTS;
+    af.bitvector.setTable(&raffect_flags);
     af.type      = sn;
     af.level     = ch->getModifyLevel();
     af.duration  = level / 15;
-    af.location  = APPLY_NONE;
+    
     af.modifier  = 0;
-    af.bitvector = AFF_ROOM_PLAGUE;
+    af.bitvector.setValue(AFF_ROOM_PLAGUE);
     room->affectTo( &af );
 
     ch->send_to("Чума заражает все вокруг.\n\r");
@@ -144,13 +145,13 @@ VOID_AFFECT(BlackDeath)::update( Room *room, Affect *paf )
     Affect plague;
     Character *vch;
 
-    plague.where                = TO_AFFECTS;
+    plague.bitvector.setTable(&affect_flags);
     plague.type                 = gsn_plague;
     plague.level                 = paf->level - 1;
     plague.duration                 = number_range(1,((plague.level/2)+1));
-    plague.location                = APPLY_NONE;
+    
     plague.modifier                 = -5;
-    plague.bitvector                 = AFF_PLAGUE;
+    plague.bitvector.setValue(AFF_PLAGUE);
 
     for (vch = room->people; vch != 0; vch = vch->next_in_room) {
         if ( !saves_spell(plague.level, vch, DAM_DISEASE, 0, DAMF_SPELL)
@@ -185,13 +186,13 @@ VOID_SPELL(Blindness)::run( Character *ch, Character *victim, int sn, int level 
                 return;
         }
 
-        af.where     = TO_AFFECTS;
+        af.bitvector.setTable(&affect_flags);
         af.type      = sn;
         af.level     = level;
-        af.location  = APPLY_HITROLL;
+        af.location = APPLY_HITROLL;
         af.modifier  = -4;
         af.duration  = 3+level / 15;
-        af.bitvector = AFF_BLIND;
+        af.bitvector.setValue(AFF_BLIND);
         affect_to_char( victim, &af );
         victim->send_to("Тебя ослепили!\n\r");
         act_p("$c1 теперь ничего не видит.",victim,0,0,TO_ROOM,POS_RESTING);
@@ -220,8 +221,8 @@ VOID_SPELL(Curse)::run( Character *ch, Object *obj, int sn, int level )
     {
         Affect *paf;
 
-        paf = obj->affected ? obj->affected->affect_find(gsn_bless) : 0;
-        if (!savesDispel(level,paf != 0 ? paf->level : obj->level,0))
+        paf = obj->affected.find(gsn_bless);
+        if (!savesDispel(level,paf != 0 ? (int)paf->level : obj->level,0))
         {
             if (paf != 0)
                 affect_remove_obj( obj, paf);
@@ -237,13 +238,13 @@ VOID_SPELL(Curse)::run( Character *ch, Object *obj, int sn, int level )
         }
     }
 
-    af.where        = TO_OBJECT;
+    af.bitvector.setTable(&extra_flags);
     af.type         = sn;
     af.level        = level;
     af.duration     = (8 + level / 5);
-    af.location     = APPLY_SAVES;
+    af.location = APPLY_SAVES;
     af.modifier     = +1;
-    af.bitvector    = ITEM_EVIL;
+    af.bitvector.setValue(ITEM_EVIL);
     affect_to_obj( obj, &af);
 
     act_p("Зловещая аура окружает $o4.",ch,obj,0,TO_ALL,POS_RESTING);
@@ -266,16 +267,16 @@ VOID_SPELL(Curse)::run( Character *ch, Character *victim, int sn, int level )
       return;
     }
     
-    af.where     = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = (8 + level / 10);
-    af.location  = APPLY_HITROLL;
+    af.location = APPLY_HITROLL;
     af.modifier  = -1 * (level / 8);
-    af.bitvector = AFF_CURSE;
+    af.bitvector.setValue(AFF_CURSE);
     affect_to_char( victim, &af );
 
-    af.location  = APPLY_SAVING_SPELL;
+    af.location = APPLY_SAVING_SPELL;
     af.modifier  = level / 8;
     affect_to_char( victim, &af );
 
@@ -301,13 +302,13 @@ VOID_SPELL(CursedLands)::run( Character *ch, Room *room, int sn, int level )
      return;
     }
 
-    af.where     = TO_ROOM_AFFECTS;
+    af.bitvector.setTable(&raffect_flags);
     af.type      = sn;
     af.level     = ch->getModifyLevel();
     af.duration  = level / 15;
-    af.location  = APPLY_NONE;
+    
     af.modifier  = 0;
-    af.bitvector = AFF_ROOM_CURSE;
+    af.bitvector.setValue(AFF_ROOM_CURSE);
     room->affectTo( &af );
 
     ch->send_to("Божественное благословение покинуло это место.\n\r");
@@ -334,13 +335,13 @@ VOID_SPELL(DeadlyVenom)::run( Character *ch, Room *room, int sn, int level )
                 return;
         }
 
-        af.where     = TO_ROOM_AFFECTS;
+        af.bitvector.setTable(&raffect_flags);
         af.type      = sn;
         af.level     = ch->getModifyLevel();
         af.duration  = level / 15;
-        af.location  = APPLY_NONE;
+        
         af.modifier  = 0;
-        af.bitvector = AFF_ROOM_POISON;
+        af.bitvector.setValue(AFF_ROOM_POISON);
         room->affectTo( &af );
 
         ch->send_to("Комната наполняется ядовитыми испарениями.\n\r");
@@ -367,13 +368,13 @@ VOID_AFFECT(DeadlyVenom)::update( Room *room, Affect *paf )
     Affect af;
     Character *vch;
 
-    af.where        = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type         = gsn_poison;
     af.level         = paf->level - 1;
     af.duration        = number_range(1,((af.level/5)+1));
-    af.location        = APPLY_NONE;
+    
     af.modifier        = -5;
-    af.bitvector= AFF_POISON;
+    af.bitvector.setValue(AFF_POISON);
 
     for ( vch = room->people; vch != 0; vch = vch->next_in_room )
     {
@@ -437,13 +438,13 @@ VOID_SPELL(LethargicMist)::run( Character *ch, Room *room, int sn, int level )
      return;
     }
 
-    af.where     = TO_ROOM_AFFECTS;
+    af.bitvector.setTable(&raffect_flags);
     af.type      = sn;
     af.level     = ch->getModifyLevel();
     af.duration  = level / 15;
-    af.location  = APPLY_NONE;
+    
     af.modifier  = 0;
-    af.bitvector = AFF_ROOM_SLOW;
+    af.bitvector.setValue(AFF_ROOM_SLOW);
     room->affectTo( &af );
 
     ch->send_to("Клубящийся летаргический туман заполняет это место.\n\r");
@@ -471,13 +472,13 @@ VOID_AFFECT(LethargicMist)::update( Room *room, Affect *paf )
     Affect af;
     Character *vch;
 
-    af.where        = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type         = gsn_slow;
     af.level         = paf->level - 1;
     af.duration        = number_range(1,((af.level/5)+1));
-    af.location        = APPLY_NONE;
+    
     af.modifier        = -5;
-    af.bitvector= AFF_SLOW;
+    af.bitvector.setValue(AFF_SLOW);
 
     for (vch = room->people; vch != 0; vch = vch->next_in_room) {
         if ( !saves_spell(af.level ,vch,DAM_OTHER, 0, DAMF_SPELL|DAMF_WATER)
@@ -509,13 +510,13 @@ VOID_SPELL(Plague)::run( Character *ch, Character *victim, int sn, int level )
         return;
     }
 
-    af.where     = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type          = sn;
     af.level         = level * 3/4;
     af.duration  = (10 + level / 10);
-    af.location  = APPLY_STR;
+    af.location = APPLY_STR;
     af.modifier  = -1 * max(1,3 + level / 15);
-    af.bitvector = AFF_PLAGUE;
+    af.bitvector.setValue(AFF_PLAGUE);
     affect_join(victim,&af);
 
     victim->send_to("Ты кричишь от боли, когда кожа покрывается чумными язвами.\n\r");
@@ -541,13 +542,13 @@ VOID_AFFECT(Plague)::update( Character *ch, Affect *paf )
     if (paf->level <= 1) 
        return; 
 
-    plague.where        = TO_AFFECTS;
+    plague.bitvector.setTable(&affect_flags);
     plague.type         = gsn_plague;
     plague.level         = paf->level - 1;
     plague.duration         = number_range(1,2 * plague.level);
-    plague.location        = APPLY_STR;
+    plague.location = APPLY_STR;
     plague.modifier         = -5;
-    plague.bitvector         = AFF_PLAGUE;
+    plague.bitvector.setValue(AFF_PLAGUE);
 
     for ( vch = ch->in_room->people; vch != 0; vch = vch->next_in_room) {
         if (!saves_spell(plague.level + 2,vch,DAM_DISEASE, 0, DAMF_SPELL)
@@ -587,13 +588,13 @@ VOID_AFFECT(Plague)::entry( Character *ch, Affect *paf )
     if (paf->level <= 1)
         return;
 
-    plague.where                = TO_AFFECTS;
+    plague.bitvector.setTable(&affect_flags);
     plague.type                 = gsn_plague;
     plague.level                 = paf->level - 1;
     plague.duration = number_range(1,2 * plague.level);
-    plague.location        = APPLY_STR;
+    plague.location = APPLY_STR;
     plague.modifier = -5;
-    plague.bitvector = AFF_PLAGUE;
+    plague.bitvector.setValue(AFF_PLAGUE);
 
     for (vch = ch->in_room->people; vch != 0; vch = vch->next_in_room)
         if ( !saves_spell(plague.level - 2,vch,DAM_DISEASE, 0, DAMF_SPELL)
@@ -651,13 +652,13 @@ VOID_SPELL(Poison)::run( Character *ch, Object *obj, int sn, int level )
                         return;
                 }
 
-                af.where         = TO_WEAPON;
+                af.bitvector.setTable(&weapon_type2);
                 af.type         = sn;
                 af.level         = level / 2;
                 af.duration         = level/8;
-                af.location         = 0;
+                
                 af.modifier         = 0;
-                af.bitvector = WEAPON_POISON;
+                af.bitvector.setValue(WEAPON_POISON);
                 affect_to_obj( obj, &af);
 
                 act_p("Прикосновение $o2 становится ядовитым.",ch,obj,0,TO_ALL,POS_RESTING);
@@ -679,13 +680,13 @@ VOID_SPELL(Poison)::run( Character *ch, Character *victim, int sn, int level )
                 return;
         }
 
-        af.where     = TO_AFFECTS;
+        af.bitvector.setTable(&affect_flags);
         af.type      = sn;
         af.level     = level;
         af.duration  = (10 + level / 10);
-        af.location  = APPLY_STR;
+        af.location = APPLY_STR;
         af.modifier  = -2;
-        af.bitvector = AFF_POISON;
+        af.bitvector.setValue(AFF_POISON);
         affect_join( victim, &af );
         victim->send_to("Ты чувствуешь себя очень болезненно.\n\r");
         act_p("$c1 выглядит очень болезненно.",victim,0,0,TO_ROOM,POS_RESTING);
@@ -757,13 +758,13 @@ VOID_SPELL(Slow)::run( Character *ch, Character *victim, int sn, int level )
     }
 
 
-    af.where     = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = (4 + level / 12);
-    af.location  = APPLY_DEX;
+    af.location = APPLY_DEX;
     af.modifier  = - max(2,level / 12);
-    af.bitvector = AFF_SLOW;
+    af.bitvector.setValue(AFF_SLOW);
     affect_to_char( victim, &af );
     victim->send_to("Твои движения замедляются...\n\r");
     act_p("Движения $c2 замедляются.",victim,0,0,TO_ROOM,POS_RESTING);
@@ -793,13 +794,13 @@ VOID_SPELL(Weaken)::run( Character *ch, Character *victim, int sn, int level )
         return;
     }
 
-    af.where     = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type      = sn;
     af.level     = level;
     af.duration  = (4 + level / 12);
-    af.location  = APPLY_STR;
+    af.location = APPLY_STR;
     af.modifier  = -1 * (2 + level / 12);
-    af.bitvector = AFF_WEAKEN;
+    af.bitvector.setValue(AFF_WEAKEN);
     affect_to_char( victim, &af );
     victim->send_to("Ты чувствуешь, как силы покидают тебя.\n\r");
     act_p("$c1 слабеет на глазах.",victim,0,0,TO_ROOM,POS_RESTING);
@@ -810,8 +811,7 @@ VOID_SPELL(Weaken)::run( Character *ch, Character *victim, int sn, int level )
 SPELL_DECL(UnholyWord);
 VOID_SPELL(UnholyWord)::run( Character *ch, Room *room, int sn, int level ) 
 { 
-    Character *vch;
-    Character *vch_next;
+
     int dam;
     
     if (!IS_EVIL(ch)) {
@@ -822,52 +822,65 @@ VOID_SPELL(UnholyWord)::run( Character *ch, Room *room, int sn, int level )
     act_p("$c1 произносит нечистые слова!", ch,0,0,TO_ROOM,POS_RESTING);
     ch->send_to("Ты произносишь нечистые слова!\n\r");
 
-    for (vch = room->people; vch != 0; vch = vch_next) {
-        vch_next = vch->next_in_room;
-        
-        if (is_safe_spell(ch, vch, true ))
+        for(auto &it : ch->in_room->getPeople())
+        {
+            
+        if(!it->isDead() && it->in_room == ch->in_room){
+            
+            try{
+
+        if (is_safe_spell(ch, it, true ))
             continue;
 
-        if (vch->is_mirror( ) && (number_percent( ) < 50)) 
+        if (it->is_mirror( ) && (number_percent( ) < 50)) 
             continue;
         
-        if (is_safe( ch, vch ))
+        if (is_safe( ch, it ))
             continue;
         
-        if (IS_EVIL(vch))
+        if (IS_EVIL(it))
             continue;
-        else if (IS_GOOD(vch))
+        else if (IS_GOOD(it))
             dam = dice( level, 20 );
         else 
             dam = dice( level, 15 );
     
-        if (saves_spell( level, vch, DAM_NEGATIVE,ch, DAMF_SPELL )) {
+        if (saves_spell( level, it, DAM_NEGATIVE,ch, DAMF_SPELL )) {
             dam /= 2;
         }
-        else if (!IS_AFFECTED( vch, AFF_CURSE )) {
+        else if (!IS_AFFECTED( it, AFF_CURSE )) {
             Affect af;
             
-            af.where = TO_AFFECTS;
             af.type  = sn;
             af.level = level;
             af.duration = 2 * level;
             af.location = APPLY_HITROLL;
             af.modifier = -1 * (level / 5);
-            af.bitvector = AFF_CURSE;
-            affect_to_char( vch, &af );
+            affect_to_char( it, &af );
             
-            af.location  = APPLY_SAVING_SPELL;
+            af.location = APPLY_SAVING_SPELL;
             af.modifier  = level / 8;
-            affect_to_char( vch, &af );
+            af.bitvector.setTable(&affect_flags);
+            af.bitvector.setValue(AFF_CURSE);
+            affect_to_char( it, &af );
 
-            vch->send_to("Ты чувствуешь себя отвратительно.\n\r");
+            it->send_to("Ты чувствуешь себя отвратительно.\n\r");
             
-            if (ch != vch)
-                act("$C1 выглядит отвратительно.",ch,0,vch,TO_CHAR);
+            if (ch != it)
+                act("$C1 выглядит отвратительно.",ch,0,it,TO_CHAR);
         }
 
-        vch->send_to("Дьявольская сила повергает тебя!\n\r");
-        damage_nocatch( ch, vch, dam, sn, DAM_NEGATIVE, true, DAMF_SPELL );
+        it->send_to("Дьявольская сила повергает тебя!\n\r");
+
+            if (ch->fighting != it && it->fighting != ch)
+            yell_panic( ch, it );
+
+        damage_nocatch( ch, it, dam, sn, DAM_NEGATIVE, true, DAMF_SPELL );
+            }
+                         catch (const VictimDeathException &) {
+                             continue;
+                    }
+        }
     }
 }
 
@@ -881,13 +894,9 @@ VOID_SPELL(BlackFeeble)::run( Character *ch, Character *victim, int sn, int leve
         return;
     }
 
-    af.where         = TO_AFFECTS;
     af.type      = sn;
     af.level     = level;
     af.duration  = number_fuzzy( level / 30 ) + 3;
-    af.location  = 0;
-    af.modifier  = 0;
-    af.bitvector = 0;
     affect_to_char( ch, &af );
     
     act_p( "Леденящий душу шепот проклятий окружает $c2, образуя защитную ауру.", ch, 0, 0, TO_ROOM,POS_RESTING);
@@ -916,13 +925,12 @@ VOID_SPELL(Corruption)::run( Character *ch, Character *victim, int sn, int level
         return;
     }
 
-    af.where     = TO_AFFECTS;
+    af.bitvector.setTable(&affect_flags);
     af.type          = sn;
     af.level         = level * 3/4;
     af.duration  = (10 + level / 5);
-    af.location  = APPLY_NONE;
-    af.modifier  = 0;
-    af.bitvector = AFF_CORRUPTION;
+    
+    af.bitvector.setValue(AFF_CORRUPTION);
     affect_join(victim,&af);
     
     act("Ты вскрикиваешь в муках, начиная гнить заживо.", victim, 0, 0, TO_CHAR);

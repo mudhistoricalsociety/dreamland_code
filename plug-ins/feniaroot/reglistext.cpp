@@ -90,6 +90,21 @@ NMI_INVOKE( RegList, add , "(args...): добавляет в конец спис
     return Register( self );
 }
 
+NMI_INVOKE( RegList, addAll , "(list): добавляет в конец списка все элементы из списка list")
+{
+    Scripting::Object *otherObj = get_unique_arg(args).toObject();
+    if (otherObj && otherObj->hasHandler()) {
+        RegList *otherList = otherObj->getHandler().getDynamicPointer<RegList>();
+        if (otherList) {
+            insert(end(), otherList->begin(), otherList->end());
+            self->changed();
+            return Register(self);
+        }
+    }
+
+    throw Scripting::Exception("Invalid list passed to addAll() method");
+}
+
 NMI_INVOKE( RegList, push_front, "(elem): добавляет элемент в начало списка" )
 {
     if (args.empty( ))
@@ -259,5 +274,12 @@ NMI_INVOKE( RegList, filter, "(func[,args]): возвращает новый с�
     obj->setHandler(rc); 
 
     return Register( obj );
+}
+
+NMI_INVOKE( RegList, clear, "(): очистка списка" )
+{
+    clear();
+    self->changed();
+    return Register();
 }
 

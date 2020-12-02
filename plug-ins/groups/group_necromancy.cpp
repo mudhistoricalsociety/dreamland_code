@@ -57,8 +57,7 @@ void AdamantiteGolem::fight( Character *victim )
 
     if (!master
         || !master->fighting
-        || master->is_npc( )
-        || master->getProfession( ) != prof_necromancer)
+        || master->is_npc( ) )
         return;
     
     if (master->fighting->fighting != master)
@@ -178,28 +177,23 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Object *obj, int sn, int level )
         NPCharacter *undead;
         Object *obj2,*next;
         MOB_INDEX_DATA *pCorpseOwner = 0;
-        char buf[MAX_STRING_LENGTH];
-        char buf3[MAX_STRING_LENGTH];
-        char arg[MAX_STRING_LENGTH];
-        char *argument;
-        int i;
 
         if ( !(obj->item_type == ITEM_CORPSE_NPC
                         || obj->item_type == ITEM_CORPSE_PC))
         {
-                ch->send_to("Ты можешь воскресить только труп!!!\n\r");
+                ch->send_to("Это заклинание работает только на трупы.\n\r");
                 return;
         }
 
         if ( !ch->is_immortal() && obj->item_type == ITEM_CORPSE_PC )
         {
-                ch->send_to("Запрещено богами!\n\r");
+                ch->send_to("Некромантия с трупами игроков запрещена Богами.\n\r");
                 return;
         }
 
         if ( ch->isAffected(sn ) )
         {
-                ch->send_to("Нужно восстановить энергию после предыдущего воскрешения.\n\r");
+                ch->send_to("Нужно восстановить энергию после предыдущего оживления.\n\r");
                 return;
         }
 
@@ -208,7 +202,7 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Object *obj, int sn, int level )
 
         if ( ch->in_room && IS_SET( ch->in_room->room_flags, ROOM_NO_MOB ) )
         {
-                ch->send_to("Здесь невозможно оживить труп.\n\r");
+                ch->send_to("В этом месте могут находиться только игроки.\n\r");
                 return;
         }
 
@@ -219,9 +213,18 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Object *obj, int sn, int level )
                 ch->send_to("Святость этого места не позволяет тебе сделать этого.\n\r");
                 return;
         }
+
+        if (obj->value3()) 
+            pCorpseOwner = get_mob_index( obj->value3() );
+
+        if (!pCorpseOwner || DLString(pCorpseOwner->short_descr).empty()) {
+            ch->println("Этот труп не поддается восстановлению.");
+            return;
+        }
+
         undead = create_mobile( get_mob_index(MOB_VNUM_UNDEAD) );
 
-        for ( i=0; i < stat_table.size; i++ )
+        for (int i=0; i < stat_table.size; i++ )
         {
                 undead->perm_stat[i] = min(25,2 * ch->perm_stat[i]);
         }
@@ -233,7 +236,7 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Object *obj, int sn, int level )
         undead->alignment = ch->alignment;
         undead->setLevel( min(100, ( ch->getModifyLevel() - 2 ) ) );
 
-        for ( i=0; i < 3; i++ )
+        for (int i=0; i < 3; i++ )
                 undead->armor[i] = interpolate(undead->getRealLevel( ),100,-100);
         undead->armor[3] = interpolate(undead->getRealLevel( ),50,-200);
         undead->gold = 0;
@@ -245,40 +248,16 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Object *obj, int sn, int level )
         undead->master = ch;
         undead->leader = ch;
         
-        if (obj->value3()) 
-            pCorpseOwner = get_mob_index( obj->value3() );
-        
-        if (pCorpseOwner && pCorpseOwner->sex != SEX_EITHER) 
+        if (pCorpseOwner->sex != SEX_EITHER) 
             undead->setSex( pCorpseOwner->sex );
         else
             undead->setSex( ch->getSex( ) );
 
-        sprintf(buf, undead->getName().c_str(), obj->getName( ));
-        undead->setName( buf );
-        
-        strcpy(buf, obj->getShortDescr( '1' ).c_str( ));
-        argument = buf;
-        buf3[0] = '\0';
-        while (argument[0] != '\0' )
-        {
-                argument = one_argument(argument, arg);
-                if (!( !str_cmp(arg,"Оживленный")
-                                || !str_cmp(arg,"(corpse)")
-                                || !str_cmp(arg,"труп") ))
-                {
-                        if (buf3[0] == '\0')
-                                strcat(buf3,arg);
-                        else
-                        {
-                                strcat(buf3," ");
-                                strcat(buf3,arg);
-                        }
-                }
-        }
-        sprintf(buf, undead->getShortDescr( ), buf3);
-        undead->setShortDescr( buf );
-        sprintf(buf, undead->getLongDescr( ), buf3);
-        undead->setLongDescr( buf );
+        // Replace "%s" in the short and long descrs of the undead with original mob name.
+        DLString whose = russian_case(pCorpseOwner->short_descr, '2');
+        undead->fmtName(undead->getName().c_str(), pCorpseOwner->player_name);
+        undead->fmtShortDescr(undead->getShortDescr(), whose.c_str());
+        undead->fmtLongDescr(undead->getLongDescr(), whose.c_str());
 
         char_to_room(undead,ch->in_room);
 
@@ -292,12 +271,10 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Object *obj, int sn, int level )
 
         postaffect_to_char( ch, sn, ch->getModifyLevel() / 10 );
 
-        ch->send_to("Используя Мистическую Силу ты воскрешаешь труп!\n\r");
+        ch->send_to("С помощью сил Тьмы и Хаоса ты оживляешь труп!\n\r");
+        ch->recho("С помощью сил Тьмы и Хаоса %C1 оживляет %O4!", ch, obj);
+        act("$C1 смотрит на тебя бессмысленным взглядом, повинуясь твоим приказам!",ch,0,undead,TO_CHAR);
 
-        sprintf(buf,"Используя Мистическую Силу $c1 воскрешает %s!",obj->getShortDescr( '4' ).c_str( ));
-        act_p(buf,ch,0,0,TO_ROOM,POS_RESTING);
-
-        act_p("$C1 смотрит на тебя бессмысленным взглядом,\n\rповинуясь твоим приказам!",ch,0,undead,TO_CHAR,POS_RESTING);
         extract_obj (obj);
 }
 
@@ -310,113 +287,3 @@ VOID_SPELL(AnimateDead)::run( Character *ch, Character *victim, int sn, int leve
 
 }
 
-/*
-void NecroCreature::canEnter( Room *const room )
-{
-    if (!Wanderer::canEnter( room ))
-        return false;
-
-    if (IS_SET(room->room_flags, ROOM_NO_MOB))
-        return false;
-    
-    if (room->clan != clan_none)
-        return false;
-
-    return true;
-}
-
-bool NecroCreature::startMoving( )
-{
-    pathToTarget( ch->in_room, 
-                  get_room_index( masterRoomVnum ), 
-                  ch->master->getModifyLevel( ) * 100 );
-    
-    makeOneStep( );
-
-    if (ch->in_room == old_room) {
-        path.clear( );
-        masterRoomVnum = 0;
-        masterID = 0;
-        return false;
-    }
-    else 
-        return true;
-}
-
-void NecroCreature::entry( )
-{
-    if (ch->in_room->vnum == masterRoomVnum) {
-        masterRoomVnum = 0;
-        masterID = 0;
-    }
-
-    SummonedCreature::entry( );
-}
-
-bool NecroCreature::specIdle( ) 
-{
-    if (SummonedCreature::specIdle( ))
-        return true;
-    
-    if (!IS_CHARMED(ch)
-        || !ch->master
-        || ch->master->getID( ) != masterID
-        || !masterRoomVnum)
-        return false;
-
-    if (path.empty( ) && !startMoving( )) 
-        return false;
-    
-    makeOneStep( );
-    return true;
-}
-
-
-VOID_SPELL(CallCorpseRenameMePlease)::run( Character *ch, char *, int sn, int level )
-{
-    int countTotal = 0, countMoved = 0;
-
-    if (ch->isAffected( sn )) {
-        ch->println( "Ты слишком сконцентрирован на предыдущей попытке призыва." );
-        return;
-    }
-    
-    if (IS_SET(ch->in_room->room_flag, ROOM_SOLITARY|ROOM_PRIVATE|ROOM_NO_MOB)
-        || ch->in_room->clan != clan_none)
-    {
-        ch->println("Твоя нежить не сможет собраться здесь.");
-        return;
-    }
-    
-    for (Character *wch = char_list; wch; wch = wch->next)
-        if (wch->is_npc( )
-             && IS_CHARMED(wch)
-             && wch->master == ch
-             && wch->in_room != ch->in_room
-             && wch->behavior)
-        {
-            NecroCreature::Pointer bhv;
-            
-            if (( bhv = wch->behavior.getDynamicPointer<NecroCreature>( ) )) {
-                bhv->masterID = ch->getID( );
-                bhv->masterRoomVnum = ch->in_room->vnum;
-                countMoved += (bhv->startMoving( ));
-                countTotal++;
-            }
-        }
-
-    if (countTotal == 0) {
-        ch->println("В мире нет нежити, подвластной тебе.");
-        return;
-    }
-
-    if (countMoved == 0) {
-        ch->println("Ни один из твоих големов или зомби не сможет добраться до тебя.");
-        return;
-    }
-    
-    ch->println("Ты мысленно приказываешь всей подвластной тебе нежити собраться в этом месте.");
-
-    postaffect_to_char( ch, sn, level / 10 );
-}
-*/

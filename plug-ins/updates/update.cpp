@@ -310,6 +310,8 @@ void char_update( )
 
         // No timer or affect update will happen in chat rooms.
         bool frozen = IS_SET(ch->in_room->room_flags, ROOM_CHAT);
+        // Special mobs don't get their HP or position updated automatically.
+        bool noupdate = ch->is_npc() && IS_SET(ch->getNPC()->act, ACT_NOUPDATE);
 
         if (ch->is_mirror() && !ch->isAffected(gsn_doppelganger )) {
             act_p("$c1 разбивается на мелкие осколки.",ch,0,0,TO_ROOM,POS_RESTING);
@@ -370,7 +372,7 @@ void char_update( )
 
         SET_BIT(ch->affected_by, ch->getRace( )->getAff( ) );
 
-        if (ch->position == POS_STUNNED) {
+        if (ch->position == POS_STUNNED && !noupdate) {
             update_pos( ch );
             room_to_save( ch );
         }
@@ -414,7 +416,7 @@ void char_update( )
             }
         }
 
-        if (!frozen && !ch->isDead())
+        if (!frozen && !ch->isDead() && !noupdate)
             char_update_affects( ch );
 
         if (!ch->is_npc( )
@@ -425,13 +427,16 @@ void char_update( )
         }
 
         if ((ch->position == POS_INCAP && number_range(0, 1) == 0)
-            || ch->position == POS_MORTAL)
+            || ch->position == POS_MORTAL
+            || (ch->position == POS_DEAD && !ch->isDead()))
         {
-            room_to_save( ch );
-            rawdamage( ch, ch, DAM_NONE, 1, false );
+            if (!noupdate) {
+                room_to_save( ch );
+                rawdamage( ch, ch, DAM_NONE, 1, false );
+            }
         }
 
-        if (ch->position <= POS_STUNNED && ch->hit > 0) {
+        if (ch->position <= POS_STUNNED && ch->hit > 0 && !noupdate) {
             room_to_save( ch );
             update_pos( ch );
         }
@@ -464,11 +469,10 @@ void char_update( )
 
 void diving_update( )
 {
-    for(int i=0;i<MAX_KEY_HASH;i++)
-        for(Room *r = room_index_hash[i]; r; r = r->next) {
-            FENIA_VOID_CALL(r, "DiveUpdate", "");
-            FENIA_VOID_CALL(r, "Spec", "");
-        }
+    for (auto &r: roomInstances) {
+        FENIA_VOID_CALL(r, "DiveUpdate", "");
+        FENIA_VOID_CALL(r, "Spec", "");
+    }
 }
 
 static bool oprog_spec( Object *obj )
@@ -497,6 +501,13 @@ void water_float_update( )
 
         if (IS_SET( obj->extra_flags, ITEM_NOPURGE ))
             continue;
+
+        if (obj->pIndexData->limit > 0)
+            continue;
+
+        // Don't drown items that reset in this location.
+        if (obj->reset_room == obj->in_room->vnum)
+            continue;
         
         if (obj->water_float == -2) {
             if (obj->may_float( ) || material_swims( obj ) == SWIM_ALWAYS)
@@ -506,11 +517,11 @@ void water_float_update( )
         }
         
         if (obj->item_type == ITEM_DRINK_CON && !IS_SET(obj->value4(), DRINK_CLOSED)) {
-            obj->in_room->echo( POS_RESTING, "%1$^O1 дела%1$nет|ют пузыри на поверхности %2$N2.", obj, obj->in_room->liquid->getShortDescr( ).c_str( ) );
+            obj->in_room->echo( POS_RESTING, "%1$^O1 дела%1$nет|ют пузыри на поверхности %2$N2.", obj, obj->in_room->pIndexData->liquid->getShortDescr( ).c_str( ) );
 
             obj->value1(URANGE( 1, obj->value1() + 8, obj->value0() ));
             obj->water_float = obj->value0() - obj->value1();
-            obj->value2(obj->in_room->liquid);
+            obj->value2(obj->in_room->pIndexData->liquid);
             room_to_save( obj );
         }
 
@@ -522,10 +533,10 @@ void water_float_update( )
                     || obj->item_type == ITEM_CORPSE_PC
                     || obj->item_type == ITEM_CONTAINER)
             {
-                obj->in_room->echo( POS_RESTING, "%1$^O1 тон%1$nет|ут в %2$N6, оставляя лишь несколько пузырьков.", obj, obj->in_room->liquid->getShortDescr( ).c_str( ) );
+                obj->in_room->echo( POS_RESTING, "%1$^O1 тон%1$nет|ут в %2$N6, оставляя лишь несколько пузырьков.", obj, obj->in_room->pIndexData->liquid->getShortDescr( ).c_str( ) );
             }
             else
-                obj->in_room->echo( POS_RESTING, "%1$^O1 тон%1$nет|ут в %2$N6.", obj, obj->in_room->liquid->getShortDescr( ).c_str( ) );
+                obj->in_room->echo( POS_RESTING, "%1$^O1 тон%1$nет|ут в %2$N6.", obj, obj->in_room->pIndexData->liquid->getShortDescr( ).c_str( ) );
 
             extract_obj( obj );
         }
@@ -548,7 +559,7 @@ static bool reset_check_obj( Object *obj )
     else
         mob = NULL;
     
-    for (r = room->reset_first; r; r = r->next)
+    for (r = room->pIndexData->reset_first; r; r = r->next)
         switch (r->command) {
         case 'O':
             if (r->arg1 == v && obj->in_room) 
@@ -682,7 +693,6 @@ void obj_update( void )
     Object *obj_next;
     Room *room;
     Character *carrier;
-    Affect *paf, *paf_next;
 
     for ( obj = object_list; obj != 0; obj = obj_next )
     {
@@ -720,9 +730,10 @@ void obj_update( void )
             continue;
 
         /* go through affects and decrement */
-        for ( paf = obj->affected; paf != 0; paf = paf_next )
-        {
-            paf_next    = paf->next;
+        AffectList affects = obj->affected.clone();
+        for (auto paf_iter = affects.cbegin( ); paf_iter != affects.cend( ); paf_iter++) {
+            Affect *paf = *paf_iter;
+
             if ( paf->duration > 0 )
             {
                 paf->duration--;
@@ -730,7 +741,7 @@ void obj_update( void )
                     paf->level--;  /* spell strength fades with time */
 
                 // Issue periodic message or action.
-                if (paf->type->getAffect( )) 
+                if (!affects.hasNext(paf_iter) && paf->type->getAffect( )) 
                     paf->type->getAffect( )->update( obj, paf );
 
                 room_to_save( obj );
@@ -739,19 +750,11 @@ void obj_update( void )
                 ;
             else
             {
-                AffectHandler::Pointer ah;
-
-                if ( paf_next == 0 
-                        || paf_next->type != paf->type
-                        || paf_next->duration > 0 )
-                {
-                    ah = paf->type->getAffect( );
-                }
-
                 room_to_save( obj );
 
-                if (ah)
-                    ah->remove( obj );
+                if (!affects.hasNext(paf_iter))
+                    if (paf->type->getAffect())
+                        paf->type->getAffect()->remove( obj );
 
                 affect_remove_obj( obj, paf );
             }
@@ -761,7 +764,7 @@ void obj_update( void )
             continue;
         
         if (!obj->in_obj 
-            && room->sector_type == SECT_DESERT
+            && room->getSectorType() == SECT_DESERT
             && material_is_flagged( obj, MAT_MELTING ))
         {
             if (carrier) {
@@ -782,7 +785,7 @@ void obj_update( void )
         
         if (obj->item_type == ITEM_POTION
             && !obj->in_obj
-            && room->sector_type == SECT_DESERT
+            && room->getSectorType() == SECT_DESERT
             && material_is_flagged( obj, MAT_FRAGILE ))
         {
             if (carrier) {
@@ -801,6 +804,10 @@ void obj_update( void )
             }
         }
 
+        // Time stops for auctioned items.
+        if (auction->item == obj)
+            continue;
+            
         if ( obj->condition > -1
                 && ( obj->timer <= 0
                      || --obj->timer > 0 ) )
@@ -861,55 +868,55 @@ void obj_update( void )
                 obj->in_room->echo( POS_RESTING, message, obj );
         }
 
-
-        if ((obj->item_type == ITEM_CORPSE_PC 
-                || (obj->item_type == ITEM_CONTAINER && obj->getCarrier( )))
-            && obj->contains)
-
-        {   /* save the contents */
+        /* Save the contents of the decaying obj. Always preserve everything inside
+         * PC corpses and carried containers. In other cases, only save undestructible items.
+         * TODO: this code, unlike 'sacrifice' command, is not recursive, so items 
+         * within containers within containers are not rescued.
+         */
+        if (obj->contains) {
             Object *t_obj, *next_obj;
+            Object *pit = find_pit_for_obj(obj);
+            bool saveAll;
 
-            for ( t_obj = obj->contains; t_obj != 0; t_obj = next_obj )
-            {
+            if (obj->item_type == ITEM_CORPSE_PC)
+                saveAll = true;
+            else if (obj->item_type == ITEM_CONTAINER && obj->getCarrier())
+                saveAll = true;
+            else
+                saveAll = false;
+
+            for (t_obj = obj->contains; t_obj != 0; t_obj = next_obj) {
                 next_obj = t_obj->next_content;
+
+                if (!saveAll && !IS_OBJ_STAT(t_obj, ITEM_NOPURGE) && !IS_OBJ_STAT(t_obj, ITEM_NOSAC))
+                    continue;
+
                 obj_from_obj(t_obj);
 
-                if ( obj->in_obj ) /* in another object */
-                    obj_to_obj(t_obj,obj->in_obj);
-                else
-                    if (obj->carried_by)  /* carried */
-                        if ( obj->wear_loc == wear_float )
-                            if ( obj->carried_by->in_room == 0 )
-                                extract_obj(t_obj);
-                            else
-                                obj_to_room(t_obj,obj->carried_by->in_room);
+                if (obj->in_obj) { /* in another object */
+                    obj_to_obj(t_obj, obj->in_obj);
+                } else if (obj->carried_by) { /* carried */
+                    if (obj->wear_loc == wear_float) {
+                        if (obj->carried_by->in_room == 0)
+                            extract_obj(t_obj);
                         else
-                            obj_to_char(t_obj,obj->carried_by);
-                    else if (obj->in_room == 0)  /* destroy it */
-                        extract_obj(t_obj);
-                    else /* to the pit */
-                    {
-                        Object *pit = 0;
-
-                        if(obj->item_type == ITEM_CORPSE_PC) {
-                            Room *pitRoom = get_room_index( obj->value3() );
-
-                            if (pitRoom)
-                                for (pit = pitRoom->contents;
-                                        pit && !IS_PIT(pit);
-                                        pit = pit->next_content)
-                                    ;
-                        }
-
-                        if (pit == 0)
-                            obj_to_room(t_obj,obj->in_room);
-                        else
-                            obj_to_obj(t_obj,pit);
+                            obj_to_room(t_obj, obj->carried_by->in_room);
+                    } else {
+                        obj_to_char(t_obj, obj->carried_by);
                     }
+
+                } else if (obj->in_room == 0) { /* destroy it */
+                    extract_obj(t_obj);
+                } else { /* to the pit */
+                    if (pit == 0)
+                        obj_to_room(t_obj, obj->in_room);
+                    else
+                        obj_to_obj(t_obj, pit);
+                }
             }
         }
 
-        extract_obj( obj );
+        extract_obj(obj);
     }
 }
 
@@ -1030,8 +1037,8 @@ void update_handler( void )
 
             for (ch = char_list; ch != 0; ch = ch->next)
                 if (!ch->is_npc() && ch->in_room != 0)
-                    ch->in_room->area->count =
-                        min(ch->in_room->area->count+1,5000000UL);
+                    ch->in_room->areaIndex()->count =
+                        min(ch->in_room->areaIndex()->count+1,5000000UL);
         }
     }
     
@@ -1175,19 +1182,16 @@ void light_update( PCharacter *ch )
 
 void room_update( void )
 {
-    Room *room;
-    Room *room_next;
+    RoomSet tempAffected;
 
-    for ( room = top_affected_room; room ; room = room_next )
-    {
-        Affect *paf;
-        Affect *paf_next;
+    // Create temporary set to avoid removing set elements from inside the loop.
+    tempAffected.insert(roomAffected.begin(), roomAffected.end());    
 
-        room_next = room->aff_next;
+    for (auto &room: tempAffected) {
+        AffectList affects = room->affected.clone();
+        for (auto paf_iter = affects.cbegin( ); paf_iter != affects.cend( ); paf_iter++) {
+            Affect *paf = *paf_iter;
 
-        for ( paf = room->affected; paf != 0; paf = paf_next )
-        {
-            paf_next        = paf->next;
             if ( paf->duration > 0 )
             {
                 paf->duration--;
@@ -1196,41 +1200,30 @@ void room_update( void )
                 ;
             else
             {
-                if ( paf_next == 0
-                        ||   paf_next->type != paf->type
-                        ||   paf_next->duration > 0 )
-                {
+                if (!affects.hasNext(paf_iter))
                     if (paf->type->getAffect( ))
                         paf->type->getAffect( )->remove( room );
-                }
 
                 room->affectRemove( paf );
             }
         }
-
     }
 }
 
 void room_affect_update( )
 {
-    Room *room;
-    Room *room_next;
-    Affect *paf;
-
-    for (room = top_affected_room; room; room = room_next) {
-        room_next = room->aff_next;
-        
+    for (auto &room: roomAffected) {        
         if (!room->people)
             continue;
         
-        for (paf = room->affected; paf; paf = paf->next) {
-            if (!paf->type->getAffect( )) 
-                continue;
-
+        for (auto paf_iter = room->affected.cbegin(); paf_iter != room->affected.cend(); paf_iter++) {
+            Affect *paf = *paf_iter;
+            
             if (paf->level == 1)
                 paf->level = 2;
 
-            paf->type->getAffect( )->update( room, paf );
+            if (!room->affected.hasNext(paf_iter) && paf->type->getAffect( )) 
+                paf->type->getAffect( )->update( room, paf );
         }
     }
 }
@@ -1417,16 +1410,11 @@ void idle_update( PCharacter *ch )
 
 void char_update_affects( Character *ch )
 {
-    Affect *paf;
-    list<Affect *> affects;
-    list<Affect *>::iterator paf_iter, paf_next;
-    
-    for (paf = ch->affected; paf != 0; paf = paf->next)
-        affects.push_back( paf );
-    
+    AffectList affects = ch->affected.clone();
+   
     try {    
-        for (paf_iter = affects.begin( ); paf_iter != affects.end( ); paf_iter++) {
-            paf = *paf_iter;
+        for (auto paf_iter = affects.cbegin( ); paf_iter != affects.cend( ); paf_iter++) {
+            Affect *paf = *paf_iter;
 
             if ( paf->duration > 0 )
             {
@@ -1437,7 +1425,7 @@ void char_update_affects( Character *ch )
                 if (number_range(0,4) == 0 && paf->level > 0)
                     paf->level--;
                 
-                if (paf->type->getAffect( )) 
+                if (!affects.hasNext(paf_iter) && paf->type->getAffect( )) 
                     paf->type->getAffect( )->update( ch, paf );
             }
             else if ( paf->duration < 0 )
@@ -1445,16 +1433,10 @@ void char_update_affects( Character *ch )
             else
             {
                 room_to_save( ch );
-                paf_next = paf_iter;
-                paf_next++;
 
-                if (paf_next == affects.end( ) 
-                    || (*paf_next)->type != paf->type 
-                    || (*paf_next)->duration > 0)
-                {
+                if (!affects.hasNext(paf_iter))
                     if (paf->type->getAffect( )) 
                         paf->type->getAffect( )->remove( ch );
-                }
 
                 affect_remove( ch, paf );
             }
@@ -1469,15 +1451,13 @@ void char_update_affects( Character *ch )
  */
 static bool check_native_weapon( Character *ch, Object *obj )
 {
-    Affect *paf;
-
     if (!ch->is_npc( )
         || ch->getNPC( )->pIndexData->area != obj->pIndexData->area)
     {
         return false;
     }
 
-    for (paf = ch->affected; paf; paf = paf->next)
+    for (auto &paf: ch->affected)
         if (paf->location == APPLY_STR && paf->modifier < 0)
             return false;
     
